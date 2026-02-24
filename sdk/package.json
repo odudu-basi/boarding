@@ -1,0 +1,42 @@
+{
+  "name": "noboarding",
+  "version": "1.0.3-beta",
+  "description": "Expo SDK for remote onboarding flow management",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "react-native",
+    "onboarding",
+    "sdk",
+    "analytics",
+    "a/b-testing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-native": ">=0.60.0"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.19.0",
+    "expo-linear-gradient": ">=12.0.0",
+    "@expo/vector-icons": ">=14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/react": "^18.2.0",
+    "@types/react-native": "^0.72.0",
+    "typescript": "^5.9.3"
+  }
+}

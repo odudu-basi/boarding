@@ -1,0 +1,22 @@
+{
+  "name": "boarding",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Noboarding - Remote onboarding flow management platform",
+  "scripts": {
+    "sync": "cp sdk/src/types.ts dashboard/lib/sdk/ && cp sdk/src/variableUtils.ts dashboard/lib/sdk/ && echo '✅ SDK files synced to dashboard (ElementRenderer skipped - has web-specific icon modifications)'",
+    "sync:full": "cp sdk/src/components/ElementRenderer.tsx dashboard/lib/sdk/ && cp sdk/src/types.ts dashboard/lib/sdk/ && cp sdk/src/variableUtils.ts dashboard/lib/sdk/ && sed -i '' \"s|from '../types'|from './types'|g\" dashboard/lib/sdk/ElementRenderer.tsx && sed -i '' \"s|from '../variableUtils'|from './variableUtils'|g\" dashboard/lib/sdk/ElementRenderer.tsx && echo '⚠️  WARNING: ElementRenderer synced - you need to manually re-add web icon support!'",
+    "sync:watch": "nodemon --watch sdk/src/types.ts --watch sdk/src/variableUtils.ts --exec 'npm run sync'",
+    "dev": "npm run sync && concurrently \"npm run sync:watch\" \"npm run dev --prefix dashboard\"",
+    "dev:dashboard": "npm run dev --prefix dashboard",
+    "build:sdk": "npm run build --prefix sdk",
+    "build:dashboard": "npm run build --prefix dashboard"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
