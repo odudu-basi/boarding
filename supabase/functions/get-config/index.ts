@@ -50,34 +50,51 @@ Deno.serve(async (req) => {
     // 1. Determine environment from API key prefix
     const isTestKey = apiKey.startsWith("nb_test_");
     const isProductionKey = apiKey.startsWith("nb_live_");
-    const environment = isTestKey ? "test" : isProductionKey ? "production" : "test"; // default to test for backwards compatibility
+    const environment = isTestKey ? "test" : isProductionKey ? "production" : "test";
 
-    // 2. Validate API key and get organization
-    let organization;
-    let orgError;
+    // 2. Try to find the API key in projects table first (new system)
+    let organizationId: string | null = null;
+    let projectId: string | null = null;
 
     if (isTestKey || isProductionKey) {
-      // New dual-key system
       const keyField = isTestKey ? "test_api_key" : "production_api_key";
-      const { data: org, error: err } = await supabase
-        .from("organizations")
-        .select("*")
+
+      // Check projects table first
+      const { data: project } = await supabase
+        .from("projects")
+        .select("id, organization_id")
         .eq(keyField, apiKey)
         .single();
-      organization = org;
-      orgError = err;
+
+      if (project) {
+        organizationId = project.organization_id;
+        projectId = project.id;
+      } else {
+        // Fallback: check organizations table (backward compat)
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("id")
+          .eq(keyField, apiKey)
+          .single();
+
+        if (org) {
+          organizationId = org.id;
+        }
+      }
     } else {
       // Legacy single key (backwards compatibility)
-      const { data: org, error: err } = await supabase
+      const { data: org } = await supabase
         .from("organizations")
-        .select("*")
+        .select("id")
         .eq("api_key", apiKey)
         .single();
-      organization = org;
-      orgError = err;
+
+      if (org) {
+        organizationId = org.id;
+      }
     }
 
-    if (orgError || !organization) {
+    if (!organizationId) {
       return new Response(
         JSON.stringify({ error: "Invalid API key" }),
         {
@@ -91,14 +108,21 @@ Deno.serve(async (req) => {
     }
 
     // 3. Get latest published config for the environment
-    const { data: configs, error: configError } = await supabase
+    let configQuery = supabase
       .from("onboarding_configs")
       .select("*")
-      .eq("organization_id", organization.id)
+      .eq("organization_id", organizationId)
       .eq("environment", environment)
       .eq("is_published", true)
       .order("created_at", { ascending: false })
       .limit(1);
+
+    // Scope to project if available
+    if (projectId) {
+      configQuery = configQuery.eq("project_id", projectId);
+    }
+
+    const { data: configs, error: configError } = await configQuery;
 
     if (configError) {
       console.error("Config error:", configError);
@@ -128,15 +152,20 @@ Deno.serve(async (req) => {
       : null;
 
     // 4. Get active experiments
-    const { data: experiments, error: experimentsError } = await supabase
+    let experimentsQuery = supabase
       .from("experiments")
       .select("id, name, variants")
-      .eq("organization_id", organization.id)
+      .eq("organization_id", organizationId)
       .eq("status", "active");
+
+    if (projectId) {
+      experimentsQuery = experimentsQuery.eq("project_id", projectId);
+    }
+
+    const { data: experiments, error: experimentsError } = await experimentsQuery;
 
     if (experimentsError) {
       console.error("Experiments error:", experimentsError);
-      // Don't fail if experiments fail, just return empty array
     }
 
     // 5. Return response
@@ -146,7 +175,8 @@ Deno.serve(async (req) => {
         version,
         config_id: configId,
         experiments: experiments || [],
-        organization_id: organization.id,
+        organization_id: organizationId,
+        project_id: projectId,
       }),
       {
         status: 200,
@@ -172,13 +202,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-/* To invoke locally:
-
-  1. Run `supabase start`
-  2. Make an HTTP request:
-
-  curl -i --location --request GET 'http://127.0.0.1:54321/functions/v1/get-config' \
-    --header 'x-api-key: your-api-key-here'
-
-*/

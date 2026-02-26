@@ -48,32 +48,49 @@ Deno.serve(async (req) => {
     const isTestKey = apiKey.startsWith("nb_test_");
     const isProductionKey = apiKey.startsWith("nb_live_");
 
-    // 2. Validate API key and get organization
-    let organization;
-    let orgError;
+    // 2. Resolve API key to organization (and optionally project)
+    let organizationId: string | null = null;
+    let projectId: string | null = null;
 
     if (isTestKey || isProductionKey) {
-      // New dual-key system
       const keyField = isTestKey ? "test_api_key" : "production_api_key";
-      const { data: org, error: err } = await supabase
-        .from("organizations")
-        .select("id")
+
+      // Check projects table first
+      const { data: project } = await supabase
+        .from("projects")
+        .select("id, organization_id")
         .eq(keyField, apiKey)
         .single();
-      organization = org;
-      orgError = err;
+
+      if (project) {
+        organizationId = project.organization_id;
+        projectId = project.id;
+      } else {
+        // Fallback: check organizations table
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("id")
+          .eq(keyField, apiKey)
+          .single();
+
+        if (org) {
+          organizationId = org.id;
+        }
+      }
     } else {
-      // Legacy single key (backwards compatibility)
-      const { data: org, error: err } = await supabase
+      // Legacy single key
+      const { data: org } = await supabase
         .from("organizations")
         .select("id")
         .eq("api_key", apiKey)
         .single();
-      organization = org;
-      orgError = err;
+
+      if (org) {
+        organizationId = org.id;
+      }
     }
 
-    if (orgError || !organization) {
+    if (!organizationId) {
       return new Response(
         JSON.stringify({ error: "Invalid API key" }),
         { status: 401, headers: { "Content-Type": "application/json" } }
@@ -83,9 +100,10 @@ Deno.serve(async (req) => {
     // 3. Get country from request headers (Cloudflare provides this)
     const country = req.headers.get("cf-ipcountry") || "Unknown";
 
-    // 4. Transform events and add organization_id, country, and flow_id
+    // 4. Transform events and add organization_id, project_id, country, and flow_id
     const eventsToInsert = events.map((event: AnalyticsEvent) => ({
-      organization_id: organization.id,
+      organization_id: organizationId,
+      project_id: projectId,
       event_name: event.event,
       user_id: event.user_id,
       session_id: event.session_id,
@@ -137,28 +155,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-/* To invoke locally:
-
-  1. Run `supabase start`
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/track-events' \
-    --header 'x-api-key: your-api-key-here' \
-    --header 'Content-Type: application/json' \
-    --data '{
-      "events": [
-        {
-          "event": "screen_viewed",
-          "user_id": "device-xyz-789",
-          "session_id": "session-abc-123",
-          "timestamp": 1707584400000,
-          "properties": {
-            "screen_id": "welcome",
-            "screen_type": "welcome_screen"
-          }
-        }
-      ]
-    }'
-
-*/

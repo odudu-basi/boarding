@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@1,400;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+/* Light theme (default) */
+:root, [data-theme="light"] {
+  --color-background: #f8f5f0;
+  --color-surface: #ffffff;
+  --color-primary: #f26522;
+  --color-primary-hover: #d95519;
+  --color-primary-tint: rgba(242, 101, 34, 0.05);
+  --color-primary-tint-strong: rgba(242, 101, 34, 0.08);
+  --color-primary-muted: rgba(242, 101, 34, 0.25);
+  --color-text: #1a1a1a;
+  --color-text-muted: #666666;
+  --color-text-light: #999999;
+  --color-border: #e5e0d8;
+  --color-border-dashed: #d4cfc7;
+  --color-success: #d4edda;
+  --color-success-text: #155724;
+  --color-error: #f8d7da;
+  --color-error-text: #721c24;
+
+  /* Legacy aliases */
+  --background: #f8f5f0;
+  --foreground: #1a1a1a;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --color-background: #1a1a1a;
+  --color-surface: #2a2a2a;
+  --color-primary: #f26522;
+  --color-primary-hover: #ff7a3d;
+  --color-primary-tint: rgba(242, 101, 34, 0.08);
+  --color-primary-tint-strong: rgba(242, 101, 34, 0.15);
+  --color-primary-muted: rgba(242, 101, 34, 0.3);
+  --color-text: #e8e8e8;
+  --color-text-muted: #a0a0a0;
+  --color-text-light: #777777;
+  --color-border: #3a3a3a;
+  --color-border-dashed: #444444;
+  --color-success: #1a3d1a;
+  --color-success-text: #a8e6a8;
+  --color-error: #3d1a1a;
+  --color-error-text: #e6a8a8;
+
+  /* Legacy aliases */
+  --background: #1a1a1a;
+  --foreground: #e8e8e8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Inter', var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.font-serif-italic {
+  font-family: 'Newsreader', serif;
+  font-style: italic;
+}

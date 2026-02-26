@@ -161,12 +161,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             userIdRef.current!
           );
 
+          console.log('🧪 A/B Test Assignment:', {
+            experiment_id: experiment.id,
+            experiment_name: experiment.name,
+            variant_id: assignment.variant_id,
+            has_variant_screens: assignment.variant_config?.screens?.length > 0,
+            variant_screen_count: assignment.variant_config?.screens?.length || 0,
+            cached: assignment.cached,
+          });
+
           // Set experiment context so all events get tagged
           analytics.setExperimentContext(experiment.id, assignment.variant_id);
 
           // Use variant screens if available
           if (assignment.variant_config?.screens?.length > 0) {
             screensToUse = assignment.variant_config.screens;
+            console.log('📱 Using variant screens:', assignment.variant_config.screens.length, 'screens');
+          } else {
+            console.log('📱 Using base flow screens (variant has no screens defined)');
           }
         } catch (err) {
           console.warn('Failed to assign experiment variant, using default flow:', err);

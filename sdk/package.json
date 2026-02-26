@@ -1,6 +1,6 @@
 {
   "name": "noboarding",
-  "version": "1.0.3-beta",
+  "version": "1.0.5-beta",
   "description": "Expo SDK for remote onboarding flow management",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

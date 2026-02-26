@@ -27,15 +27,13 @@ Boarding/
 │   ├── components/
 │   │   └── CustomScreenRenderer.tsx  # Web preview renderer
 │   └── lib/
-│       └── types.ts               # Shared type definitions
+│       ├── types.ts               # Shared type definitions
+│       └── sdk/                   # Local SDK copies for preview
 ├── sdk/                # React Native SDK
 │   └── src/
 │       ├── OnboardingFlow.tsx     # Main SDK entry component
 │       ├── components/
-│       │   ├── ElementRenderer.tsx # Native element tree renderer
-│       │   ├── WelcomeScreen.tsx
-│       │   ├── TextInput.tsx
-│       │   └── SocialLogin.tsx
+│       │   └── ElementRenderer.tsx # Native element tree renderer
 │       ├── types.ts
 │       ├── api.ts
 │       └── analytics.ts
@@ -48,6 +46,20 @@ Boarding/
 ### Server-Driven UI
 
 Screens are defined as JSON element trees that are fetched at runtime by the SDK. This enables over-the-air UI updates without App Store reviews.
+
+### Two Screen Types
+
+**1. Noboard Screen (AI-Generated)**
+- Built with composable primitives
+- Fully updateable over-the-air (JSON element trees)
+- Created via AI Chat Builder in dashboard
+- No code compilation required
+
+**2. Custom Screen (Developer-Registered)**
+- React Native components you write
+- For native features (camera, payments, biometrics, etc.)
+- Code NOT updateable OTA (requires app update)
+- Flow control updateable (add/remove/reorder via dashboard)
 
 ### Composable Primitives
 
@@ -84,13 +96,39 @@ There are no dedicated `button`, `checkbox`, or `card` elements. Complex compone
 
 ### Actions
 
-Any container can have an `action` to make it interactive:
+Any container can have an `action` or `actions` array to make it interactive:
 
 - `tap` — generic tap handler
 - `navigate` — go to next/previous/specific screen
 - `link` — open external URL
 - `toggle` — toggle selected/unselected state
 - `dismiss` — dismiss the current screen or flow
+- `set_variable` — store value in variable store
+- `trigger_native` — call native handler registered in SDK
+
+### Native Handlers (trigger_native)
+
+**The killer feature:** Noboard screens (AI-generated, fully updateable UI) can trigger native code (compiled into app).
+
+**Use cases:**
+- Notification permissions
+- Apple/Google Sign-In
+- App Store ratings
+- Camera access
+- Biometric authentication
+- Any native SDK or API
+
+**How it works:**
+1. Write native handler function once (e.g., `requestNotificationPermission`)
+2. Register it with `OnboardingFlow` via `nativeHandlers` prop
+3. AI generates button UI in dashboard that triggers the handler
+4. Update button UI remotely without app updates
+
+**What's updateable:**
+- ✅ Button text, colors, position, styling
+- ✅ Screen order and flow logic
+- ✅ When the button appears
+- ❌ The native code implementation (compiled in app)
 
 ### AI Chat Builder
 
@@ -106,6 +144,14 @@ Chat history persists per-screen across tab switches.
 ### Image Slots
 
 When the AI creates a screen with images, each image is assigned a sequential `slotNumber`. The dashboard sidebar shows all image slots with options to upload or generate images.
+
+### Variables & Conditional Logic
+
+- Store data from inputs and selections in a variable store
+- Use variables in text templates: `"Welcome, {user_name}!"`
+- Conditional navigation based on variable values
+- Conditional visibility for elements
+- Variables passed to `onComplete` callback
 
 ## Tech Stack
 
@@ -216,6 +262,117 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
+
+## Example: Native Handler Integration
+
+### 1. Create Native Handlers
+
+```typescript
+// nativeHandlers.ts
+import * as Notifications from 'expo-notifications';
+import * as StoreReview from 'expo-store-review';
+import * as AppleAuthentication from 'expo-apple-authentication';
+
+export const requestNotificationPermission = async () => {
+  const { status } = await Notifications.requestPermissionsAsync();
+  return { granted: status === 'granted', status };
+};
+
+export const requestAppRating = async () => {
+  const isAvailable = await StoreReview.isAvailableAsync();
+  if (isAvailable) {
+    await StoreReview.requestReview();
+    return { prompted: true };
+  }
+  return { prompted: false };
+};
+
+export const signInWithApple = async () => {
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+  return {
+    success: true,
+    userId: credential.user,
+    email: credential.email,
+  };
+};
+```
+
+### 2. Register with SDK
+
+```typescript
+import { OnboardingFlow } from 'noboarding';
+import {
+  requestNotificationPermission,
+  requestAppRating,
+  signInWithApple,
+} from './nativeHandlers';
+
+<OnboardingFlow
+  testKey="nb_test_..."
+  productionKey="nb_live_..."
+  nativeHandlers={{
+    requestNotifications: requestNotificationPermission,
+    requestAppRating: requestAppRating,
+    signInWithApple: signInWithApple,
+  }}
+  onComplete={(userData) => {
+    console.log('Onboarding complete:', userData);
+  }}
+/>
+```
+
+### 3. AI Generates Button in Dashboard
+
+In dashboard AI Chat: "Create a button that says 'Enable Notifications' and triggers the `requestNotifications` handler, then navigates to the next screen"
+
+AI generates this element tree:
+
+```json
+{
+  "type": "hstack",
+  "style": { "backgroundColor": "#007AFF", "padding": 16, "borderRadius": 12 },
+  "children": [
+    { "type": "text", "props": { "text": "Enable Notifications" } }
+  ],
+  "actions": [
+    { "type": "trigger_native", "handlerName": "requestNotifications" },
+    { "type": "navigate", "destination": "next" }
+  ]
+}
+```
+
+### 4. Update Button UI Over-the-Air
+
+Change button text, colors, position in dashboard → No app update needed!
+
+## Features
+
+### For Developers
+- ✅ Integrate SDK once, update flows remotely forever
+- ✅ A/B test different onboarding flows
+- ✅ No App Store review wait for UI changes
+- ✅ Native handler system for platform features
+- ✅ Analytics auto-tracked
+- ✅ Variable system for data collection
+- ✅ Conditional logic and navigation
+
+### For Product Teams
+- ✅ AI-powered screen builder (describe in natural language)
+- ✅ Visual flow editor with live preview
+- ✅ Upload screenshots, AI recreates them
+- ✅ Image upload and AI generation
+- ✅ Real-time preview on iPhone/Android frames
+- ✅ Analytics dashboard
+
+## Documentation
+
+- **[SDK README](./sdk/README.md)** - Complete SDK documentation
+- **[Dashboard README](./dashboard/README.md)** - Dashboard development guide
 
 ## License
 

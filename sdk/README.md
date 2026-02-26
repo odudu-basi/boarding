@@ -10,16 +10,11 @@ npm install noboarding
 yarn add noboarding
 ```
 
-**📚 Complete Setup Guides:**
-- **[AI Setup](./SETUP_GUIDE.md#ai-setup)** - Copy/paste instructions for your AI coding assistant (Claude Code, Cursor, etc.)
-- **[Manual Setup](./SETUP_GUIDE.md#normal-setup)** - Step-by-step instructions
-- **[RevenueCat Integration](./REVENUECAT_SETUP.md)** - Detailed RevenueCat paywall guide
-- **[AI Custom Screen Guide](./AI_CUSTOM_SCREEN_GUIDE.md)** - Complete guide for building custom screens with data flow (for AI assistants)
-
 ## Quick Start
 
 ```typescript
 import { OnboardingFlow } from 'noboarding';
+import { requestNotificationPermission, requestAppRating, signInWithApple } from './nativeHandlers';
 
 function App() {
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -42,10 +37,18 @@ function App() {
         onSkip={() => {
           setShowOnboarding(false);
         }}
+
         // Optional: Get the generated user ID to sync with other services
         onUserIdGenerated={(userId) => {
           console.log('User ID:', userId);
           // Use this to sync with RevenueCat, analytics, etc.
+        }}
+
+        // Optional: Register native handlers for trigger_native actions
+        nativeHandlers={{
+          requestNotifications: requestNotificationPermission,
+          requestAppRating: requestAppRating,
+          signInWithApple: signInWithApple,
         }}
       />
     );
@@ -72,30 +75,47 @@ The SDK automatically detects your environment using React Native's `__DEV__` fl
 
 ## Screen Types
 
-### Custom Screen (AI-generated)
+There are **two screen types** in Noboarding:
 
-Screens built with the composable primitive system. The `ElementRenderer` recursively maps a JSON element tree to native React Native components (`View`, `Text`, `Image`, `ScrollView`, `TextInput`, `TouchableOpacity`).
+### 1. Noboard Screen (AI-Generated)
 
-```typescript
-// A custom screen in your config looks like:
+Screens built with the **composable primitive system**. The AI generates these screens in the dashboard, and the `ElementRenderer` recursively maps the JSON element tree to native React Native components (`View`, `Text`, `Image`, `ScrollView`, `TextInput`, `TouchableOpacity`).
+
+**✅ Fully updateable over-the-air** — change UI, text, colors, layout without app updates.
+
+```json
 {
   "id": "welcome",
-  "type": "custom_screen",
-  "props": {},
+  "type": "noboard_screen",
   "elements": [
     {
       "id": "root",
       "type": "vstack",
       "style": { "width": "100%", "height": "100%", "padding": 24 },
       "children": [
-        { "id": "title", "type": "text", "props": { "text": "Welcome!" }, "style": { "fontSize": 32, "fontWeight": "700" } },
+        {
+          "id": "title",
+          "type": "text",
+          "props": { "text": "Welcome!" },
+          "style": { "fontSize": 32, "fontWeight": "700" }
+        },
         { "id": "spacer", "type": "spacer" },
         {
           "id": "cta",
           "type": "hstack",
-          "style": { "backgroundColor": "#000", "borderRadius": 12, "padding": 16, "justifyContent": "center" },
+          "style": {
+            "backgroundColor": "#000",
+            "borderRadius": 12,
+            "padding": 16,
+            "justifyContent": "center"
+          },
           "children": [
-            { "id": "cta_text", "type": "text", "props": { "text": "Get Started" }, "style": { "color": "#fff", "fontSize": 16 } }
+            {
+              "id": "cta_text",
+              "type": "text",
+              "props": { "text": "Get Started" },
+              "style": { "color": "#fff", "fontSize": 16 }
+            }
           ],
           "action": { "type": "navigate", "destination": "next" }
         }
@@ -105,62 +125,16 @@ Screens built with the composable primitive system. The `ElementRenderer` recurs
 }
 ```
 
-### Pre-built Components
+### 2. Custom Screen (Developer-Registered Components)
 
-- **WelcomeScreen** — Image + title + subtitle + CTA button
-- **TextInput** — Form for collecting user data (name, email, etc.)
-- **SocialLogin** — Apple/Google/Facebook authentication buttons
+React Native components you write and register with the SDK. Used for advanced native features that can't be represented as JSON element trees (camera, biometrics, complex native SDKs, custom animations).
 
-## Composable Primitives
-
-The element tree uses these building blocks:
-
-**Containers** (have `children` array):
-- `vstack` — vertical flex column
-- `hstack` — horizontal flex row
-- `zstack` — layered/overlapping elements
-- `scrollview` — scrollable container
-
-**Content** (leaf elements with `props`):
-- `text` — text content (`props.text`)
-- `image` — image (`props.url`, `props.slotNumber`)
-- `video` — video placeholder (`props.url`)
-- `lottie` — Lottie animation (`props.url`)
-- `icon` — emoji (`props.emoji`) or named icon (`props.name`, `props.library`)
-- `input` — text field (`props.placeholder`, `props.type`)
-- `spacer` — flexible empty space
-- `divider` — horizontal line
-
-## Actions
-
-Any container can have an `action` to make it interactive:
-
-```typescript
-action: {
-  type: 'tap' | 'navigate' | 'link' | 'toggle' | 'dismiss',
-  destination?: string  // URL for link, screen ID for navigate
-}
-```
-
-| Action | Behavior |
-|--------|----------|
-| `tap` | Generic tap handler |
-| `navigate` | Go to `"next"`, `"previous"`, or a specific screen ID |
-| `link` | Open URL via `Linking.openURL` |
-| `toggle` | Toggle selected/unselected state (visual border change) |
-| `dismiss` | Dismiss current screen or flow |
-
-## Custom Screens (Developer-Registered Components)
-
-For advanced use cases requiring native features (camera, payments, biometrics) or third-party SDKs, you can create custom React Native components and register them with the SDK.
-
-### Creating a Custom Screen
-
-1. **Create your component** with the required props:
+**❌ Code NOT updateable over-the-air** — requires app update to change component logic.
+**✅ Flow control updateable** — can add/remove/reorder these screens in dashboard without app updates.
 
 ```typescript
 // screens/PaywallScreen.tsx
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, Button } from 'react-native';
 import type { CustomScreenProps } from 'noboarding';
 
@@ -172,25 +146,6 @@ export const PaywallScreen: React.FC<CustomScreenProps> = ({
   data,
   onDataUpdate,
 }) => {
-  useEffect(() => {
-    analytics.track('paywall_viewed', {
-      screen_id: 'paywall',
-    });
-  }, []);
-
-  const handlePurchase = () => {
-    analytics.track('paywall_conversion', {
-      package: 'premium_monthly',
-    });
-
-    onDataUpdate?.({
-      premium: true,
-      purchase_date: new Date().toISOString(),
-    });
-
-    onNext();
-  };
-
   // Preview mode for dashboard
   if (preview) {
     return (
@@ -198,9 +153,6 @@ export const PaywallScreen: React.FC<CustomScreenProps> = ({
         <Text style={{ fontSize: 64 }}>💎</Text>
         <Text style={{ fontSize: 24, fontWeight: 'bold', marginVertical: 20 }}>
           Paywall Preview
-        </Text>
-        <Text style={{ color: '#666', marginBottom: 20 }}>
-          (Real paywall only works in app)
         </Text>
         <Button title="Continue" onPress={onNext} />
       </View>
@@ -212,43 +164,277 @@ export const PaywallScreen: React.FC<CustomScreenProps> = ({
       <Text style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 20 }}>
         Unlock Premium
       </Text>
-      <Button title="Subscribe - $9.99/month" onPress={handlePurchase} />
-      {onSkip && (
-        <Button title="Maybe Later" onPress={onSkip} color="#666" />
-      )}
+      <Button title="Subscribe - $9.99/month" onPress={() => {
+        analytics.track('paywall_conversion');
+        onDataUpdate?.({ premium: true });
+        onNext();
+      }} />
+      {onSkip && <Button title="Maybe Later" onPress={onSkip} color="#666" />}
     </View>
   );
 };
+
+// Register in your app
+<OnboardingFlow
+  customComponents={{
+    PaywallScreen: PaywallScreen,
+  }}
+  ...
+/>
 ```
 
-2. **Register the component** in your app:
+Then add to your flow in the dashboard by clicking "Add Custom Screen" and entering the component name `PaywallScreen`.
+
+## Composable Primitives
+
+Noboard screens are built from a small set of building blocks:
+
+### Containers (have `children` array)
+- `vstack` — vertical flex column
+- `hstack` — horizontal flex row
+- `zstack` — layered/overlapping elements
+- `scrollview` — scrollable container
+
+### Content (leaf elements with `props`)
+- `text` — text content (`props.text`)
+- `image` — image (`props.url`, `props.imageDescription`)
+- `video` — video placeholder (`props.videoDescription`)
+- `lottie` — Lottie animation (`props.animationDescription`)
+- `icon` — emoji (`props.emoji`) or named icon (`props.name`, `props.library`)
+- `input` — text field (`props.placeholder`, `props.type`, `props.variable`)
+- `spacer` — flexible empty space
+- `divider` — horizontal line
+
+**Note:** There are no dedicated `button`, `checkbox`, or `card` elements. Complex components are composed from stacks with actions attached.
+
+## Actions
+
+Any container can have an `action` or `actions` array to make it interactive:
 
 ```typescript
-import { OnboardingFlow } from 'noboarding';
-import { PaywallScreen } from './screens/PaywallScreen';
-
-function App() {
-  return (
-    <OnboardingFlow
-      apiKey="sk_live_your_api_key_here"
-      customComponents={{
-        PaywallScreen: PaywallScreen,  // Register here
-      }}
-      onComplete={(userData) => {
-        console.log('User data:', userData);
-        // userData includes data from custom screens
-      }}
-    />
-  );
+action: {
+  type: 'tap' | 'navigate' | 'link' | 'toggle' | 'dismiss' | 'set_variable' | 'trigger_native',
+  destination?: string,  // For navigate/link
+  variable?: string,     // For set_variable
+  value?: any,           // For set_variable
+  handlerName?: string,  // For trigger_native
+  handlerParams?: Record<string, any>  // For trigger_native
 }
 ```
 
-3. **Add to your flow** in the dashboard:
-   - Click "Add Custom Screen"
-   - Enter component name: `PaywallScreen`
-   - Position in flow
+### Action Types
 
-### CustomScreenProps Interface
+| Action | Behavior | Use Case |
+|--------|----------|----------|
+| `tap` | Generic tap handler | Analytics tracking |
+| `navigate` | Go to `"next"`, `"previous"`, or a specific screen ID | Flow navigation |
+| `link` | Open URL via `Linking.openURL` | External links |
+| `toggle` | Toggle selected/unselected state (visual border change) | Single/multi-select options |
+| `dismiss` | Dismiss current screen or flow | Exit/skip |
+| `set_variable` | Store a value in the variable store | Save form data, selections |
+| `trigger_native` | **NEW:** Call registered native handler | Permissions, auth, ratings, native features |
+
+### Multiple Actions
+
+Elements can have multiple actions that execute in sequence:
+
+```json
+{
+  "type": "hstack",
+  "actions": [
+    { "type": "set_variable", "variable": "selected_plan", "value": "premium" },
+    { "type": "navigate", "destination": "next" }
+  ]
+}
+```
+
+## Native Handlers (trigger_native Action)
+
+**The best of both worlds:** Over-the-air updateable UI that triggers native code compiled into your app.
+
+### Why Use trigger_native?
+
+For native features like notifications, authentication, app ratings, camera access, or biometrics:
+- ✅ **UI fully updateable** — Change button text, colors, position via dashboard
+- ✅ **Native code stays in app** — Logic never changes, no app updates needed
+- ✅ **Flow control updateable** — Add/remove/reorder via dashboard
+- ✅ **Works for all native features** — Any native API or SDK
+
+### How It Works
+
+1. **Write native handler functions** in your app (one-time setup)
+2. **Register handlers** with `OnboardingFlow`
+3. **AI generates buttons** in dashboard that trigger these handlers
+4. **Update button UI remotely** without app updates
+
+### Example: Notification Permissions
+
+**Step 1:** Create the native handler
+
+```typescript
+// nativeHandlers.ts
+import * as Notifications from 'expo-notifications';
+
+export const requestNotificationPermission = async () => {
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    return { granted: status === 'granted', status };
+  }
+
+  return { granted: true, status: existingStatus };
+};
+```
+
+**Step 2:** Register with SDK
+
+```typescript
+import { OnboardingFlow } from 'noboarding';
+import { requestNotificationPermission } from './nativeHandlers';
+
+<OnboardingFlow
+  testKey="nb_test_..."
+  nativeHandlers={{
+    requestNotifications: requestNotificationPermission,
+  }}
+  onComplete={(data) => console.log(data)}
+/>
+```
+
+**Step 3:** AI generates the button in dashboard
+
+In the dashboard AI Chat, say: "Create a button that says 'Enable Notifications' and triggers the `requestNotifications` handler"
+
+The AI generates:
+
+```json
+{
+  "type": "hstack",
+  "style": { "backgroundColor": "#007AFF", "padding": 16, "borderRadius": 12 },
+  "children": [
+    {
+      "type": "text",
+      "props": { "text": "Enable Notifications" },
+      "style": { "color": "#fff", "fontSize": 16, "fontWeight": "600" }
+    }
+  ],
+  "actions": [
+    {
+      "type": "trigger_native",
+      "handlerName": "requestNotifications",
+      "variable": "notification_result"
+    },
+    { "type": "navigate", "destination": "next" }
+  ]
+}
+```
+
+**Step 4:** Update button UI remotely
+
+Change the button text, colors, position in the dashboard — no app update needed!
+
+### More Examples
+
+#### App Store Rating
+
+```typescript
+// nativeHandlers.ts
+import * as StoreReview from 'expo-store-review';
+
+export const requestAppRating = async () => {
+  const isAvailable = await StoreReview.isAvailableAsync();
+  if (isAvailable) {
+    await StoreReview.requestReview();
+    return { prompted: true };
+  }
+  return { prompted: false, reason: 'not_available' };
+};
+```
+
+```typescript
+<OnboardingFlow
+  nativeHandlers={{
+    requestAppRating: requestAppRating,
+  }}
+/>
+```
+
+#### Apple Sign-In
+
+```typescript
+// nativeHandlers.ts
+import * as AppleAuthentication from 'expo-apple-authentication';
+
+export const signInWithApple = async () => {
+  try {
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    });
+    return {
+      success: true,
+      userId: credential.user,
+      email: credential.email,
+      fullName: credential.fullName,
+    };
+  } catch (error) {
+    return { success: false, error: error.code };
+  }
+};
+```
+
+```typescript
+<OnboardingFlow
+  nativeHandlers={{
+    signInWithApple: signInWithApple,
+  }}
+/>
+```
+
+### Handler Return Values
+
+Handlers can return data that gets saved to the variable store:
+
+```json
+{
+  "type": "trigger_native",
+  "handlerName": "requestNotifications",
+  "variable": "notification_result"
+}
+```
+
+The returned value is automatically stored in `variables.notification_result` and can be:
+- Used in conditional navigation
+- Referenced in text templates: `{notification_result.status}`
+- Passed to `onComplete` callback
+
+### Passing Parameters
+
+Send configuration to handlers:
+
+```json
+{
+  "type": "trigger_native",
+  "handlerName": "trackEvent",
+  "handlerParams": {
+    "eventName": "button_clicked",
+    "category": "onboarding"
+  }
+}
+```
+
+```typescript
+export const trackEvent = async (params) => {
+  await analytics.track(params.eventName, { category: params.category });
+};
+```
+
+## CustomScreenProps Interface
+
+For developer-registered custom screens:
 
 ```typescript
 interface CustomScreenProps {
@@ -264,210 +450,22 @@ interface CustomScreenProps {
 }
 ```
 
-### RevenueCat Integration Example
-
-Here's a complete example integrating RevenueCat paywalls:
-
-```typescript
-// screens/RevenueCatPaywall.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, Alert } from 'react-native';
-import Purchases, { PurchasesOffering } from 'react-native-purchases';
-import type { CustomScreenProps } from 'noboarding';
-
-export const RevenueCatPaywall: React.FC<CustomScreenProps> = ({
-  analytics,
-  onNext,
-  onSkip,
-  preview,
-  onDataUpdate,
-}) => {
-  const [offering, setOffering] = useState<PurchasesOffering | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    analytics.track('paywall_viewed');
-    loadOffering();
-  }, []);
-
-  const loadOffering = async () => {
-    try {
-      const offerings = await Purchases.getOfferings();
-      setOffering(offerings.current);
-
-      analytics.track('paywall_loaded', {
-        offering_id: offerings.current?.identifier,
-        packages_count: offerings.current?.availablePackages.length,
-      });
-    } catch (error: any) {
-      analytics.track('paywall_error', { error: error.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePurchase = async (packageId: string) => {
-    try {
-      analytics.track('paywall_purchase_started', { package: packageId });
-
-      const pkg = offering?.availablePackages.find(p => p.identifier === packageId);
-      if (!pkg) return;
-
-      const { customerInfo } = await Purchases.purchasePackage(pkg);
-      const isPremium = customerInfo.entitlements.active['premium'] !== undefined;
-
-      if (isPremium) {
-        analytics.track('paywall_conversion', {
-          package: packageId,
-          price: pkg.product.priceString,
-        });
-
-        onDataUpdate?.({
-          premium: true,
-          package: packageId,
-          purchase_timestamp: new Date().toISOString(),
-        });
-
-        Alert.alert('Welcome to Premium!', '', [
-          { text: 'Continue', onPress: onNext }
-        ]);
-      }
-    } catch (error: any) {
-      const cancelled = error.userCancelled;
-
-      analytics.track('paywall_purchase_failed', {
-        package: packageId,
-        cancelled,
-      });
-
-      if (!cancelled) {
-        Alert.alert('Purchase Failed', 'Please try again.');
-      }
-    }
-  };
-
-  const handleSkip = () => {
-    analytics.track('paywall_dismissed');
-    onSkip?.() || onNext();
-  };
-
-  // Preview mode
-  if (preview) {
-    return (
-      <View style={{ padding: 20, alignItems: 'center' }}>
-        <Text style={{ fontSize: 64, marginBottom: 20 }}>💎</Text>
-        <Text style={{ fontSize: 24, fontWeight: 'bold' }}>
-          RevenueCat Paywall
-        </Text>
-        <Text style={{ color: '#999', marginTop: 8 }}>
-          (Preview - real paywall in app)
-        </Text>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 32, fontWeight: 'bold', marginBottom: 20 }}>
-        Unlock Premium
-      </Text>
-
-      {offering?.availablePackages.map(pkg => (
-        <TouchableOpacity
-          key={pkg.identifier}
-          onPress={() => handlePurchase(pkg.identifier)}
-          style={{
-            backgroundColor: '#007AFF',
-            padding: 16,
-            borderRadius: 12,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: '#FFF', fontSize: 18, fontWeight: 'bold' }}>
-            {pkg.product.title} - {pkg.product.priceString}
-          </Text>
-        </TouchableOpacity>
-      ))}
-
-      <Button title="Maybe Later" onPress={handleSkip} color="#666" />
-    </View>
-  );
-};
-```
-
-**Setup:**
-
-1. Install RevenueCat:
-```bash
-npm install react-native-purchases
-```
-
-2. Configure RevenueCat in your app initialization:
-```typescript
-// App.tsx
-import Purchases from 'react-native-purchases';
-
-useEffect(() => {
-  Purchases.configure({
-    apiKey: Platform.OS === 'ios'
-      ? 'appl_YOUR_KEY'
-      : 'goog_YOUR_KEY',
-  });
-}, []);
-```
-
-3. Register and use in onboarding:
-```typescript
-<OnboardingFlow
-  customComponents={{
-    RevenueCatPaywall: RevenueCatPaywall,
-  }}
-/>
-```
-
-4. Set up webhooks (see below) to track conversions server-side
-
-### Best Practices
-
-- ✅ Always implement `preview` mode for dashboard compatibility
-- ✅ Track key events with `analytics.track()`
-- ✅ Use `onDataUpdate()` to save data from custom screens
-- ✅ Handle errors gracefully with user-friendly messages
-- ✅ Call `onNext()` when screen is complete
-
-For more details, see [AI Custom Screen Guide](./AI_CUSTOM_SCREEN_GUIDE.md).
-
-## API
-
-### OnboardingFlow Props
+## OnboardingFlow Props
 
 | Prop | Type | Required | Description |
 |------|------|----------|-------------|
-| `apiKey` | `string` | Yes | Your API key from the dashboard |
+| `testKey` | `string` | No* | Test API key (`nb_test_...`) for development |
+| `productionKey` | `string` | No* | Production API key (`nb_live_...`) for production |
+| `apiKey` | `string` | No* | Legacy single key (backwards compatible) |
 | `onComplete` | `(data?) => void` | Yes | Called when user completes onboarding |
 | `onSkip` | `() => void` | No | Called when user skips onboarding |
 | `baseUrl` | `string` | No | Custom API base URL |
 | `customComponents` | `Record<string, Component>` | No | Developer-registered custom screen components |
+| `nativeHandlers` | `Record<string, Function>` | No | Native handler functions for `trigger_native` actions |
 | `initialVariables` | `Record<string, any>` | No | Initial values for the variable store |
-| `onUserIdGenerated` | `(userId: string) => void` | No | Called when SDK generates user ID (use to sync with RevenueCat, analytics, etc.) |
+| `onUserIdGenerated` | `(userId: string) => void` | No | Called when SDK generates user ID |
 
-### ElementRenderer Props
-
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| `elements` | `ElementNode[]` | Yes | The element tree to render |
-| `analytics` | `AnalyticsManager` | Yes | Analytics manager for tracking |
-| `screenId` | `string` | Yes | Current screen ID for analytics |
-| `onNavigate` | `(destination: string) => void` | Yes | Navigation handler |
-| `onDismiss` | `() => void` | Yes | Dismiss handler |
+*At least one key is required: either `apiKey`, or both `testKey` and `productionKey`
 
 ## Auto-Tracked Events
 
@@ -484,6 +482,64 @@ The SDK automatically tracks:
 - `onboarding_completed`
 - `onboarding_abandoned`
 - `element_action` — tracks every action with element ID, action type, and screen ID
+
+## Variables & Templating
+
+Variables store data collected during onboarding:
+
+### Setting Variables
+
+```json
+{
+  "type": "input",
+  "props": { "placeholder": "Enter your name", "variable": "user_name" }
+}
+```
+
+```json
+{
+  "type": "hstack",
+  "action": {
+    "type": "set_variable",
+    "variable": "selected_plan",
+    "value": "premium"
+  }
+}
+```
+
+### Using Variables in Text
+
+```json
+{
+  "type": "text",
+  "props": { "text": "Welcome back, {user_name}!" }
+}
+```
+
+### Conditional Navigation
+
+```json
+{
+  "type": "navigate",
+  "destination": {
+    "if": { "variable": "selected_plan", "operator": "equals", "value": "premium" },
+    "then": "payment_screen",
+    "else": "free_trial_screen"
+  }
+}
+```
+
+### Conditional Visibility
+
+```json
+{
+  "type": "text",
+  "props": { "text": "Premium features unlocked!" },
+  "conditions": {
+    "show_if": { "variable": "premium", "operator": "equals", "value": true }
+  }
+}
+```
 
 ## Exports
 
@@ -505,6 +561,7 @@ import type {
   ElementStyle,
   ElementPosition,
   AnalyticsEvent,
+  CustomScreenProps,
 } from 'noboarding';
 
 // Utilities
@@ -515,42 +572,20 @@ import { API, AnalyticsManager } from 'noboarding';
 
 ### Building the SDK
 
-The TestApp imports the SDK from the compiled `lib/` directory (`"main": "lib/index.js"`), not from `src/` directly. After making any changes to files in `sdk/src/`, you must rebuild before testing:
+The TestApp imports the SDK from the compiled `lib/` directory, not from `src/` directly. After making changes to `sdk/src/`, you must rebuild:
 
 ```bash
 cd sdk
 npm run build
 ```
 
-Then restart the TestApp. If you skip this step, the TestApp will still be running the old compiled code and your changes won't take effect.
+Then restart the TestApp.
 
 ### Dashboard Preview Integration
 
-The dashboard uses **local copies** of SDK source files for the preview feature. When you modify SDK source files, they need to be synced to the dashboard.
+The dashboard uses **local copies** of SDK source files for the preview feature. When you modify SDK source files, sync them to the dashboard:
 
-**Why copies?** Next.js/Turbopack doesn't support importing from external directories with the react-native-web setup, so the dashboard maintains local copies in `dashboard/lib/sdk/`.
-
-#### Files That Need Syncing
-
-When you modify these SDK files:
-- `src/types.ts` → Auto-synced to `dashboard/lib/sdk/types.ts`
-- `src/variableUtils.ts` → Auto-synced to `dashboard/lib/sdk/variableUtils.ts`
-- `src/components/ElementRenderer.tsx` → ⚠️ **NOT auto-synced** (dashboard has web-specific modifications)
-
-**ElementRenderer Special Case:**
-
-The dashboard copy of `ElementRenderer.tsx` has web-specific modifications for icon support:
-- Uses `react-icons` instead of `@expo/vector-icons`
-- Renders real icons in preview (Feather, Material, Ionicons, FontAwesome)
-- Gradients fall back to solid colors
-
-**If you modify ElementRenderer.tsx significantly:**
-1. Run `npm run sync:full` from project root to copy it
-2. Manually re-add web icon imports and logic (check git diff to see what changed)
-
-#### Syncing Methods
-
-**Manual sync (run when needed):**
+**Manual sync:**
 ```bash
 # From project root
 npm run sync
@@ -562,11 +597,9 @@ npm run sync
 npm run sync:watch
 ```
 
-This watches SDK files and automatically copies changes to the dashboard when you save.
-
 **Full development mode:**
 ```bash
-# From project root - starts dashboard + auto-sync
+# From project root
 npm run dev
 ```
 
@@ -575,11 +608,11 @@ This command:
 2. Starts file watcher for auto-sync
 3. Starts dashboard dev server
 
-#### Important Notes
+#### Files That Need Syncing
 
-- ⚠️ **Dashboard preview uses copies** - Changes to SDK files won't appear in dashboard preview until synced
-- ✅ **Mobile app uses npm package** - TestApp uses the built SDK from `lib/`, requires `npm run build`
-- 🔄 **Keep in sync** - Run `npm run sync:watch` while developing SDK to keep dashboard preview accurate
+- `src/types.ts` → Auto-synced to `dashboard/lib/sdk/types.ts`
+- `src/variableUtils.ts` → Auto-synced to `dashboard/lib/sdk/variableUtils.ts`
+- `src/components/ElementRenderer.tsx` → ⚠️ **NOT auto-synced** (dashboard has web-specific modifications)
 
 ## Requirements
 

@@ -50,6 +50,8 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
   // Track selection groups: group name → selected element ID
   const [groupSelections, setGroupSelections] = useState<Record<string, string>>({});
+  // Track text input values locally (uncontrolled)
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
   const executeAction = useCallback(
     (action: ElementAction, element: ElementNode) => {
@@ -65,6 +67,12 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
         case 'set_variable':
           if (action.variable !== undefined && onSetVariable) {
             onSetVariable(action.variable, action.value);
+          }
+          // Also save all current text input values when any action is triggered
+          if (onSetVariable) {
+            Object.entries(inputValues).forEach(([key, value]) => {
+              onSetVariable(key, value);
+            });
           }
           break;
         case 'toggle': {
@@ -98,6 +106,12 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           break;
         }
         case 'navigate':
+          // Save all text input values before navigating
+          if (onSetVariable) {
+            Object.entries(inputValues).forEach(([key, value]) => {
+              onSetVariable(key, value);
+            });
+          }
           if (onNavigate && action.destination) {
             onNavigate(action.destination);
           }
@@ -115,7 +129,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           break;
       }
     },
-    [groupSelections, onNavigate, onDismiss, analytics, screenId, onSetVariable]
+    [groupSelections, onNavigate, onDismiss, analytics, screenId, onSetVariable, inputValues]
   );
 
   const handleAction = useCallback(
@@ -148,6 +162,8 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           groupSelections={groupSelections}
           onAction={handleAction}
           variables={variables}
+          inputValues={inputValues}
+          setInputValues={setInputValues}
         />
       ))}
     </>
@@ -163,9 +179,11 @@ interface RenderNodeProps {
   onAction: (element: ElementNode) => void;
   variables: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
+  inputValues: Record<string, string>;
+  setInputValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
-const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable }) => {
+const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues }) => {
   // Variable-based conditions — hide element if condition is not met
   if (element.conditions?.show_if) {
     const shouldShow = evaluateCondition(element.conditions.show_if, variables);
@@ -219,7 +237,7 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     );
   };
 
-  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable };
+  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues };
 
   switch (element.type) {
     // ─── Containers ───
@@ -441,7 +459,8 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
       // Get the variable name - use props.variable if specified, otherwise use element.id
       const variableName = element.props?.variable || element.id;
-      const currentValue = variables[variableName] || '';
+      // Use local state value, or fall back to variables, or empty string
+      const currentValue = inputValues[variableName] ?? variables[variableName] ?? '';
 
       return (
         <TextInput
@@ -452,9 +471,8 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
           autoCapitalize={element.props?.type === 'email' ? 'none' : 'sentences'}
           value={currentValue}
           onChangeText={(text) => {
-            if (onSetVariable) {
-              onSetVariable(variableName, text);
-            }
+            // Save to local state only - don't trigger parent re-render
+            setInputValues(prev => ({ ...prev, [variableName]: text }));
           }}
         />
       );

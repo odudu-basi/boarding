@@ -1,0 +1,537 @@
+{
+  "message": "Updated each option to set the 'training_goal' variable to its respective value when toggled, and the continue button now navigates to next after selection.",
+  "elements": [
+    {
+      "id": "root",
+      "type": "vstack",
+      "style": {
+        "gap": 24,
+        "width": "100%",
+        "height": "100%",
+        "padding": 16,
+        "paddingTop": 60,
+        "backgroundColor": "#F5F1E8"
+      },
+      "children": [
+        {
+          "id": "back_button",
+          "type": "hstack",
+          "style": {
+            "width": 56,
+            "height": 56,
+            "alignItems": "center",
+            "borderRadius": 28,
+            "justifyContent": "center",
+            "backgroundColor": "#FFFFFF"
+          },
+          "action": {
+            "type": "navigate",
+            "destination": "previous"
+          },
+          "children": [
+            {
+              "id": "back_icon",
+              "type": "icon",
+              "props": {
+                "name": "arrow-left",
+                "library": "lucide"
+              },
+              "style": {
+                "color": "#2D1810",
+                "fontSize": 24
+              }
+            }
+          ]
+        },
+        {
+          "id": "heading",
+          "type": "text",
+          "props": {
+            "text": "What are you\ntraining for?"
+          },
+          "style": {
+            "color": "#2D1810",
+            "fontSize": 44,
+            "textAlign": "center",
+            "fontWeight": "700",
+            "lineHeight": 52
+          }
+        },
+        {
+          "id": "options_container",
+          "type": "scrollview",
+          "style": {
+            "flex": 1,
+            "width": "100%"
+          },
+          "children": [
+            {
+              "id": "options_list",
+              "type": "vstack",
+              "style": {
+                "gap": 16,
+                "width": "100%"
+              },
+              "children": [
+                {
+                  "id": "option_hyrox",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "HYROX"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_hyrox",
+                      "type": "text",
+                      "props": {
+                        "text": "🏃"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_hyrox",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_hyrox",
+                          "type": "text",
+                          "props": {
+                            "text": "HYROX"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_hyrox",
+                          "type": "text",
+                          "props": {
+                            "text": "The World Series of Fitness Racing"
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "option_marathon",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "Marathon / Running"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_marathon",
+                      "type": "text",
+                      "props": {
+                        "text": "🏃"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_marathon",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_marathon",
+                          "type": "text",
+                          "props": {
+                            "text": "Marathon / Running"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_marathon",
+                          "type": "text",
+                          "props": {
+                            "text": "5K, 10K, half, full marathon"
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "option_triathlon",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "Triathlon"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_triathlon",
+                      "type": "text",
+                      "props": {
+                        "text": "🏊"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_triathlon",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_triathlon",
+                          "type": "text",
+                          "props": {
+                            "text": "Triathlon"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_triathlon",
+                          "type": "text",
+                          "props": {
+                            "text": "Swim, bike, run"
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "option_crossfit",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "CrossFit"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_crossfit",
+                      "type": "text",
+                      "props": {
+                        "text": "🏋️"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_crossfit",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_crossfit",
+                          "type": "text",
+                          "props": {
+                            "text": "CrossFit"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_crossfit",
+                          "type": "text",
+                          "props": {
+                            "text": "CrossFit Open, Games, local comps"
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "option_obstacle",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "Obstacle Course"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_obstacle",
+                      "type": "text",
+                      "props": {
+                        "text": "🧗"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_obstacle",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_obstacle",
+                          "type": "text",
+                          "props": {
+                            "text": "Obstacle Course"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_obstacle",
+                          "type": "text",
+                          "props": {
+                            "text": "Spartan, Tough Mudder, etc."
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "option_cycling",
+                  "type": "hstack",
+                  "style": {
+                    "gap": 16,
+                    "width": "100%",
+                    "padding": 20,
+                    "alignItems": "center",
+                    "borderColor": "#2D1810",
+                    "borderWidth": 2,
+                    "borderRadius": 20,
+                    "backgroundColor": "#FFFFFF"
+                  },
+                  "actions": [
+                    {
+                      "type": "set_variable",
+                      "variable": "training_goal",
+                      "value": "Cycling"
+                    },
+                    {
+                      "type": "toggle",
+                      "group": "training_goal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "id": "icon_cycling",
+                      "type": "text",
+                      "props": {
+                        "text": "🚴"
+                      },
+                      "style": {
+                        "fontSize": 32
+                      }
+                    },
+                    {
+                      "id": "text_container_cycling",
+                      "type": "vstack",
+                      "style": {
+                        "gap": 4,
+                        "flex": 1
+                      },
+                      "children": [
+                        {
+                          "id": "title_cycling",
+                          "type": "text",
+                          "props": {
+                            "text": "Cycling"
+                          },
+                          "style": {
+                            "color": "#2D1810",
+                            "fontSize": 20,
+                            "fontWeight": "700"
+                          }
+                        },
+                        {
+                          "id": "desc_cycling",
+                          "type": "text",
+                          "props": {
+                            "text": "Road, track, or mountain events"
+                          },
+                          "style": {
+                            "color": "#9B9B9B",
+                            "fontSize": 15
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "continue_button",
+          "type": "hstack",
+          "style": {
+            "width": "100%",
+            "padding": 20,
+            "alignItems": "center",
+            "borderRadius": 16,
+            "justifyContent": "center",
+            "backgroundColor": "#2D1810"
+          },
+          "action": {
+            "type": "navigate",
+            "destination": "next"
+          },
+          "children": [
+            {
+              "id": "continue_text",
+              "type": "text",
+              "props": {
+                "text": "Continue"
+              },
+              "style": {
+                "color": "#FFFFFF",
+                "fontSize": 18,
+                "fontWeight": "700"
+              }
+            }
+          ],
+          "visibleWhen": {
+            "group": "training_goal",
+            "hasSelection": true
+          }
+        }
+      ]
+    }
+  ]
+}
