@@ -21,7 +21,7 @@ function LoginForm() {
   const [error, setError] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirect') || '/'
+  const redirectTo = searchParams.get('redirect') || '/home'
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
