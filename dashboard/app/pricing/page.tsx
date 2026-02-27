@@ -8,11 +8,11 @@ import { trackPricingPageViewed, trackPricingPlanSelected, trackCheckoutStarted 
 import { createClient } from '@/lib/supabase/client'
 
 const SCALE_TIERS = [
-  { credits: 700,  price: 100, priceId: 'price_1T4sP2I8BOMrgAxcCSNyeZlz' },
-  { credits: 1000, price: 145, priceId: 'price_1T4sPkI8BOMrgAxcKWMGKS3U' },
-  { credits: 2000, price: 290, priceId: 'price_1T4sQCI8BOMrgAxc6R53jZxr' },
-  { credits: 3000, price: 430, priceId: 'price_1T4sQTI8BOMrgAxcmTJ1ebCw' },
-  { credits: 5000, price: 715, priceId: 'price_1T4sQjI8BOMrgAxco8QqYKJf' },
+  { credits: 700,  price: 100, priceId: 'price_1T5MfnKHtI6VLNHOM16BdKLr' },
+  { credits: 1000, price: 145, priceId: 'price_1T5Mg3KHtI6VLNHONUaorpm7' },
+  { credits: 2000, price: 290, priceId: 'price_1T5MgTKHtI6VLNHOZp2NrLOI' },
+  { credits: 3000, price: 430, priceId: 'price_1T5MgnKHtI6VLNHOtPKJdIwy' },
+  { credits: 5000, price: 715, priceId: 'price_1T5Mh6KHtI6VLNHODM3dAkZW' },
 ]
 
 export default function PricingPage() {
@@ -93,7 +93,7 @@ function PricingContent() {
   const pricingTiers = [
     {
       name: 'Starter',
-      priceId: 'price_1T4sDJI8BOMrgAxcwp6QasFi',
+      priceId: 'price_1T5Mf1KHtI6VLNHOM7WqGj9l',
       price: 20,
       credits: 100,
       revenueFee: 1.5,
@@ -109,7 +109,7 @@ function PricingContent() {
     },
     {
       name: 'Developer',
-      priceId: 'price_1T4sDxI8BOMrgAxcvXZtcdUk',
+      priceId: 'price_1T5MfOKHtI6VLNHOQtPzywEO',
       price: 50,
       credits: 300,
       revenueFee: 1.25,
