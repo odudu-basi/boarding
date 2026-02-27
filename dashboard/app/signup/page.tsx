@@ -39,12 +39,13 @@ export default function SignupPage() {
     }
 
     if (authData.user) {
-      // Create organization
+      // Create organization with 5 free credits
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .insert({
           name: organizationName,
           plan: 'free',
+          credits: 5,
         })
         .select()
         .single()
