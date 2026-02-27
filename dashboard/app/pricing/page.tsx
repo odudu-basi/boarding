@@ -203,6 +203,14 @@ function PricingContent() {
           }}>
             Docs
           </a>
+          <a href="/blog" style={{
+            textDecoration: 'none',
+            fontSize: theme.fontSizes.sm,
+            fontWeight: 500,
+            color: '#1a1a1a',
+          }}>
+            Blog
+          </a>
           {isLoggedIn ? (
             <a href="/home" style={{
               textDecoration: 'none',

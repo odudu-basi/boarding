@@ -90,6 +90,14 @@ export default function LandingPage() {
           }}>
             Docs
           </a>
+          <a href="/blog" style={{
+            textDecoration: 'none',
+            fontSize: theme.fontSizes.sm,
+            fontWeight: 500,
+            color: '#1a1a1a',
+          }}>
+            Blog
+          </a>
           {isLoggedIn ? (
             <a href="/home" style={{
               textDecoration: 'none',
@@ -755,6 +763,7 @@ export default function LandingPage() {
         </span>
         <div style={{ display: 'flex', gap: 24 }}>
           <a href="/docs" style={{ textDecoration: 'none', fontSize: theme.fontSizes.sm, color: '#666' }}>Docs</a>
+          <a href="/blog" style={{ textDecoration: 'none', fontSize: theme.fontSizes.sm, color: '#666' }}>Blog</a>
           <a href="/login" style={{ textDecoration: 'none', fontSize: theme.fontSizes.sm, color: '#666' }}>Log in</a>
           <a href="/signup" style={{ textDecoration: 'none', fontSize: theme.fontSizes.sm, color: '#666' }}>Sign up</a>
         </div>

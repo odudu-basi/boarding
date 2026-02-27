@@ -1,5 +1,21 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { DocsContent } from './DocsContent'
+
+export const metadata: Metadata = {
+  title: "Documentation",
+  description:
+    "Complete guide to integrating the Noboarding React Native SDK. Installation, custom screens, variables, RevenueCat integration, analytics events, and AI-assisted setup.",
+  openGraph: {
+    title: "Documentation — Noboarding",
+    description:
+      "Complete integration guide for the Noboarding React Native SDK — installation, custom screens, analytics, and more.",
+    url: "/docs",
+  },
+  alternates: {
+    canonical: "/docs",
+  },
+}
 
 export interface CustomScreenInfo {
   flowName: string
