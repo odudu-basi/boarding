@@ -6,6 +6,7 @@ import { Layout } from '@/components/Layout'
 import { Container, Card, Heading, Text } from '@/components/ui'
 import { theme } from '@/lib/theme'
 import { useRouter } from 'next/navigation'
+import { trackAnalyticsPageViewed, trackAnalyticsPaywallSetupClicked } from '@/lib/mixpanel'
 
 interface Screen {
   screen_id: string
@@ -143,6 +144,9 @@ export default function AnalyticsPage() {
         .split('; ')
         .find(row => row.startsWith('selected_project='))
         ?.split('=')[1]
+
+      // Track analytics page view (will track again after data loads with hasData)
+      trackAnalyticsPageViewed(projectCookie || org.id, false)
 
       // Get all onboarding configs for this org (filtered by project if set)
       let configsQuery = supabase
@@ -642,6 +646,8 @@ export default function AnalyticsPage() {
               <button
                 onClick={() => {
                   const isPaid = organization?.plan && organization.plan !== 'free'
+                  // Track paywall setup click
+                  trackAnalyticsPaywallSetupClicked(organization?.plan || 'free')
                   // Navigate to pricing if free plan, or RevenueCat docs section if paid
                   window.location.href = isPaid ? '/docs?section=revenuecat' : '/pricing'
                 }}

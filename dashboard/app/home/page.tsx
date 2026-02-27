@@ -1,8 +1,9 @@
 import { getPageContext } from '@/lib/get-page-context'
-import { CopyButton } from '@/components/CopyButton'
 import { Layout } from '@/components/Layout'
 import { Container, Card, Heading, Text } from '@/components/ui'
+import { ApiKeySection } from '@/components/ApiKeySection'
 import { theme } from '@/lib/theme'
+import Link from 'next/link'
 
 export default async function Home() {
   const { supabase, organization, projects, currentProject } = await getPageContext()
@@ -10,17 +11,17 @@ export default async function Home() {
   // Get analytics summary scoped to current project
   const eventsQuery = supabase
     .from('analytics_events')
-    .select('event_name, user_id')
+    .select('event_name, user_id', { count: 'exact' })
     .eq('organization_id', organization.id)
-    .limit(500)
+    .limit(5000)
 
   if (currentProject) {
     eventsQuery.eq('project_id', currentProject.id)
   }
 
-  const { data: events } = await eventsQuery
+  const { data: events, count } = await eventsQuery
 
-  const totalEvents = events?.length || 0
+  const totalEvents = count || 0
   const uniqueUsers = new Set(events?.map((e) => e.user_id)).size
   const onboardingStarts = events?.filter((e) => e.event_name === 'onboarding_started').length || 0
   const onboardingCompletions = events?.filter((e) => e.event_name === 'onboarding_completed').length || 0
@@ -30,7 +31,7 @@ export default async function Home() {
   const { data: revenueCatEvents } = await supabase
     .from('revenuecat_events')
     .select('event_type, price')
-    .limit(200)
+    .limit(1000)
 
   const totalRevenue = revenueCatEvents
     ?.filter((e: any) => e.event_type === 'INITIAL_PURCHASE' && e.price)
@@ -53,7 +54,7 @@ export default async function Home() {
           <div style={{ marginBottom: theme.spacing.xl }}>
             <Heading level={1} serif>Overview</Heading>
             <Text variant="muted" style={{ marginTop: theme.spacing.xs }}>
-              Your onboarding performance at a glance
+              Your onboarding performance at a glance · All time
             </Text>
           </div>
 
@@ -94,64 +95,11 @@ export default async function Home() {
           </div>
 
           {/* API Keys Section */}
-          <Card padding="md" style={{ marginBottom: theme.spacing.xl }}>
-            <Heading level={3} serif style={{ marginBottom: theme.spacing.sm }}>Your API Keys</Heading>
-            <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.md }}>
-              Use these keys in your React Native app
-            </Text>
-
-            {/* Test API Key */}
-            <div style={{ marginBottom: theme.spacing.md }}>
-              <Text size="sm" style={{ marginBottom: theme.spacing.xs, fontWeight: 500 }}>
-                Test API Key
-              </Text>
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <code
-                  style={{
-                    flex: 1,
-                    backgroundColor: theme.colors.background,
-                    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                    borderRadius: theme.borderRadius.md,
-                    fontFamily: theme.fonts.mono,
-                    fontSize: theme.fontSizes.sm,
-                    color: theme.colors.text,
-                  }}
-                >
-                  {testApiKey}
-                </code>
-                <CopyButton text={testApiKey} />
-              </div>
-              <Text variant="muted" size="xs" style={{ marginTop: theme.spacing.xs }}>
-                For development and testing
-              </Text>
-            </div>
-
-            {/* Production API Key */}
-            <div>
-              <Text size="sm" style={{ marginBottom: theme.spacing.xs, fontWeight: 500 }}>
-                Production API Key
-              </Text>
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-                <code
-                  style={{
-                    flex: 1,
-                    backgroundColor: theme.colors.background,
-                    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                    borderRadius: theme.borderRadius.md,
-                    fontFamily: theme.fonts.mono,
-                    fontSize: theme.fontSizes.sm,
-                    color: theme.colors.text,
-                  }}
-                >
-                  {productionApiKey}
-                </code>
-                <CopyButton text={productionApiKey} />
-              </div>
-              <Text variant="muted" size="xs" style={{ marginTop: theme.spacing.xs }}>
-                For production builds
-              </Text>
-            </div>
-          </Card>
+          <ApiKeySection
+            testApiKey={testApiKey}
+            productionApiKey={productionApiKey}
+            projectId={currentProject?.id}
+          />
 
         </div>
       </Container>

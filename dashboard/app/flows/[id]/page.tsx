@@ -69,6 +69,7 @@ export default function FlowBuilderPage() {
   const [aiGenerating, setAiGenerating] = useState(false)
   const [userCredits, setUserCredits] = useState<number | null>(null)
   const [loadingCredits, setLoadingCredits] = useState(true)
+  const [subscriptionPlan, setSubscriptionPlan] = useState<string>('free')
   const screenMenuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
@@ -123,7 +124,7 @@ export default function FlowBuilderPage() {
   const loadConfig = async () => {
     const { data } = await supabase
       .from('onboarding_configs')
-      .select('*')
+      .select('*, organizations(plan)')
       .eq('id', params.id)
       .single()
 
@@ -131,6 +132,11 @@ export default function FlowBuilderPage() {
       setConfig(data)
       setScreens(data.config.screens || [])
       setAssets(data.config.assets || [])
+
+      // Set subscription plan from organization
+      if (data.organizations && typeof data.organizations === 'object' && 'plan' in data.organizations) {
+        setSubscriptionPlan((data.organizations as any).plan || 'free')
+      }
     }
     setLoading(false)
   }
@@ -225,6 +231,50 @@ export default function FlowBuilderPage() {
     setScreens(newScreens)
   }
 
+  const handleAssetSelection = (elementId: string, assetName: string, assetType: 'image' | 'video' | 'lottie') => {
+    if (selectedScreen === null) return
+
+    const updateElementInTree = (elements: any[]): any[] => {
+      return elements.map(el => {
+        if (el.id === elementId) {
+          // Update URL to use asset reference
+          const updatedEl = {
+            ...el,
+            props: {
+              ...el.props,
+              url: `asset:${assetName}`,
+            },
+          }
+
+          // Auto-convert element type if needed
+          if (el.type !== assetType) {
+            updatedEl.type = assetType
+            console.log(`Auto-converted element from ${el.type} to ${assetType}`)
+          }
+
+          return updatedEl
+        }
+
+        // Recursively update children
+        if (el.children) {
+          return {
+            ...el,
+            children: updateElementInTree(el.children),
+          }
+        }
+
+        return el
+      })
+    }
+
+    const currentScreen = screens[selectedScreen]
+    if (currentScreen && currentScreen.elements) {
+      const updatedElements = updateElementInTree(currentScreen.elements)
+      updateScreen(selectedScreen, { elements: updatedElements })
+      toast(`Asset "${assetName}" assigned`, 'success')
+    }
+  }
+
   const saveFlow = async () => {
     setSaving(true)
     await supabase
@@ -293,7 +343,7 @@ export default function FlowBuilderPage() {
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: `${theme.spacing.md} ${theme.spacing.xl}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/home')}
               style={{ background: 'none', border: 'none', color: theme.colors.textMuted, cursor: 'pointer', fontSize: theme.fontSizes.sm }}
             >
               ← Back
@@ -309,8 +359,8 @@ export default function FlowBuilderPage() {
                       variant="light"
                       size="sm"
                       style={{
-                        color: userCredits !== null && userCredits < 10 ? theme.colors.error : theme.colors.textMuted,
-                        fontWeight: userCredits !== null && userCredits < 10 ? '600' : '400'
+                        color: theme.colors.primary,
+                        fontWeight: '600'
                       }}
                     >
                       {userCredits !== null ? `${userCredits.toFixed(2)} credits` : '0 credits'}
@@ -612,16 +662,24 @@ export default function FlowBuilderPage() {
                 </div>
               </div>
 
-              {/* Tab Content */}
+              {/* Tab Content — both tabs always mounted, hidden via CSS to preserve state */}
               <div style={{
                 flex: 1,
                 minHeight: 0,
-                overflowY: leftSidebarTab === 'ai-builder' ? 'hidden' : 'auto',
-                padding: leftSidebarTab === 'ai-builder' ? 0 : theme.spacing.md,
                 display: 'flex',
                 flexDirection: 'column',
+                position: 'relative',
               }}>
-                {leftSidebarTab === 'layout' && (
+                {/* Layout tab */}
+                <div style={{
+                  display: leftSidebarTab === 'layout' ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  padding: theme.spacing.md,
+                }}>
+                {(
                   <>
                     {screens.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: theme.spacing.xl, color: theme.colors.textMuted }}>
@@ -823,8 +881,17 @@ export default function FlowBuilderPage() {
                     )}
                   </>
                 )}
+                </div>
 
-                {leftSidebarTab === 'ai-builder' && (
+                {/* AI Chat tab — always mounted, hidden via CSS */}
+                <div style={{
+                  display: leftSidebarTab === 'ai-builder' ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}>
+                {(
                   selectedScreen !== null && screens[selectedScreen]?.type === 'custom_screen' ? (
                     <div style={{
                       display: 'flex',
@@ -880,6 +947,7 @@ export default function FlowBuilderPage() {
                     />
                   )
                 )}
+                </div>
               </div>
             </div>
           </div>
@@ -1079,6 +1147,18 @@ export default function FlowBuilderPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Preview disclaimer */}
+                <div style={{
+                  fontSize: '11px',
+                  color: theme.colors.textMuted,
+                  textAlign: 'center',
+                  maxWidth: 320,
+                  lineHeight: '1.4',
+                  opacity: 0.7,
+                }}>
+                  Preview is an estimate. Margins, padding, and layout may differ on device. Publish and test on Expo for accurate results.
+                </div>
               </>
             ) : (
               <div style={{ textAlign: 'center', color: theme.colors.textMuted }}>
@@ -1108,7 +1188,11 @@ export default function FlowBuilderPage() {
                   />
                 </div>
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
-                  <ImageSlotsIndicator elements={screens[selectedScreen]?.elements || []} />
+                  <ImageSlotsIndicator
+                    elements={screens[selectedScreen]?.elements || []}
+                    assets={assets}
+                    onSelectAsset={handleAssetSelection}
+                  />
                 </div>
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
                   <VariablesPanel screens={screens} selectedScreen={selectedScreen} />
@@ -1215,6 +1299,8 @@ export default function FlowBuilderPage() {
         isOpen={showPublishModal}
         onClose={() => setShowPublishModal(false)}
         onPublish={publishFlow}
+        subscriptionPlan={subscriptionPlan}
+        lastPublishedAt={config?.last_published_at}
       />
     </div>
   )
@@ -2767,19 +2853,21 @@ interface ImageSlot {
   description: string
   hasUrl: boolean
   url?: string
+  elementType: 'image' | 'video' | 'lottie'
 }
 
 function collectImageSlots(elements: any[]): ImageSlot[] {
   const slots: ImageSlot[] = []
   const walk = (els: any[]) => {
     for (const el of els) {
-      if (el.type === 'image' && el.props?.slotNumber) {
+      if ((el.type === 'image' || el.type === 'video' || el.type === 'lottie') && el.props?.slotNumber) {
         slots.push({
           elementId: el.id,
           slotNumber: el.props.slotNumber,
-          description: el.props.imageDescription || 'No description',
+          description: el.props.imageDescription || el.props.videoDescription || el.props.animationDescription || 'No description',
           hasUrl: !!el.props.url,
           url: el.props.url,
+          elementType: el.type,
         })
       }
       if (el.children) walk(el.children)
@@ -2789,35 +2877,144 @@ function collectImageSlots(elements: any[]): ImageSlot[] {
   return slots.sort((a, b) => a.slotNumber - b.slotNumber)
 }
 
-function ImageSlotsIndicator({ elements }: { elements: any[] }) {
+function ImageSlotsIndicator({ elements, assets, onSelectAsset }: {
+  elements: any[],
+  assets: Asset[],
+  onSelectAsset: (elementId: string, assetName: string, assetType: 'image' | 'video' | 'lottie') => void
+}) {
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
   const slots = collectImageSlots(elements)
 
   if (slots.length === 0) {
     return null
   }
 
+  const getAssetIcon = (type: string) => {
+    switch (type) {
+      case 'image': return '🖼️'
+      case 'video': return '🎬'
+      case 'lottie': return '✨'
+      default: return '📄'
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
       <div style={{ marginBottom: theme.spacing.xs }}>
-        <Text size="sm" style={{ fontWeight: '600' }}>Image Slots</Text>
+        <Text size="sm" style={{ fontWeight: '600' }}>Media Slots</Text>
       </div>
       {slots.map((slot) => (
         <div
           key={slot.elementId}
           style={{
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: theme.spacing.xs,
             padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
             borderRadius: theme.borderRadius.sm,
             backgroundColor: slot.hasUrl ? '#f0fdf4' : theme.colors.background,
             border: `1px solid ${slot.hasUrl ? '#bbf7d0' : theme.colors.border}`,
+            position: 'relative',
           }}
         >
-          <span style={{ fontSize: '13px' }}>{slot.hasUrl ? '✅' : '🖼️'}</span>
-          <Text size="xs" style={{ color: slot.hasUrl ? '#166534' : theme.colors.textMuted }}>
-            {slot.hasUrl ? `Image (${slot.slotNumber})` : `Image (${slot.slotNumber}) needs an image`}
-          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+            <span style={{ fontSize: '13px' }}>{slot.hasUrl ? '✅' : getAssetIcon(slot.elementType)}</span>
+            <Text size="xs" style={{ color: slot.hasUrl ? '#166534' : theme.colors.textMuted, flex: 1 }}>
+              {slot.hasUrl
+                ? `Slot ${slot.slotNumber} (${slot.elementType})`
+                : `Slot ${slot.slotNumber} needs ${slot.elementType}`}
+            </Text>
+          </div>
+
+          {/* Asset selector button */}
+          <button
+            onClick={() => setOpenDropdownId(openDropdownId === slot.elementId ? null : slot.elementId)}
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              backgroundColor: 'transparent',
+              color: theme.colors.primary,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borderRadius.sm,
+              cursor: 'pointer',
+              fontFamily: theme.fonts.sans,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = theme.colors.primary
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = theme.colors.border
+            }}
+          >
+            {openDropdownId === slot.elementId ? 'Hide assets' : 'Select asset'}
+          </button>
+
+          {/* Dropdown list */}
+          {openDropdownId === slot.elementId && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              backgroundColor: theme.colors.surface,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: theme.borderRadius.sm,
+              padding: '4px',
+            }}>
+              {assets.length === 0 ? (
+                <Text size="xs" style={{ padding: '8px', color: theme.colors.textMuted, textAlign: 'center' }}>
+                  No assets uploaded
+                </Text>
+              ) : (
+                assets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => {
+                      onSelectAsset(slot.elementId, asset.name, asset.type)
+                      setOpenDropdownId(null)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                      padding: '6px 8px',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      borderRadius: theme.borderRadius.sm,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontFamily: theme.fonts.sans,
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = theme.colors.background
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    <span style={{ fontSize: '14px' }}>{getAssetIcon(asset.type)}</span>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      <Text size="xs" style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: theme.colors.text
+                      }}>
+                        {asset.name}
+                      </Text>
+                      <Text size="xs" style={{ color: theme.colors.textMuted }}>
+                        {asset.type}
+                      </Text>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -3050,32 +3247,9 @@ function PropertiesPanel({ screen, screenIndex, selectedElement, onUpdate, onUpd
       {/* Divider */}
       <div style={{ height: '1px', backgroundColor: theme.colors.border }} />
 
-      {/* Layer Section */}
+      {/* Padding & Elements Section */}
       {screen.type === 'noboard_screen' && (
         <>
-          <PropertySection title="Layer">
-            <PropertyField label="Background Color">
-              <input
-                type="text"
-                value={screen.layout?.backgroundColor || '#FFFFFF'}
-                onChange={(e) => {
-                  const newScreen = { ...screen }
-                  if (!newScreen.layout) newScreen.layout = {}
-                  newScreen.layout.backgroundColor = e.target.value
-                  onUpdate('_full_screen', newScreen)
-                }}
-                style={{
-                  width: '100%',
-                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.fontSizes.sm,
-                }}
-                placeholder="#FFFFFF"
-              />
-            </PropertyField>
-          </PropertySection>
-
           <PropertySection title="Padding">
             <PropertyField label="All Sides">
               <input
@@ -3244,6 +3418,150 @@ function PropertyField({ label, children }: { label: string; children: React.Rea
   )
 }
 
+// Attempts to repair truncated JSON from max_tokens cutoff
+// Closes any unclosed strings, arrays, and objects to make it parseable
+function repairTruncatedJSON(text: string): string {
+  let repaired = text.trim()
+
+  // Remove any trailing incomplete key-value pair (e.g., `"fontWeight": "400` or `"color":`)
+  // Strip trailing incomplete string value
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, '')
+  // Strip trailing key with no value
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, '')
+  // Strip trailing comma
+  repaired = repaired.replace(/,\s*$/, '')
+
+  // Count unclosed brackets/braces
+  let openBraces = 0
+  let openBrackets = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i]
+    if (escaped) { escaped = false; continue }
+    if (ch === '\\') { escaped = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') openBraces++
+    else if (ch === '}') openBraces--
+    else if (ch === '[') openBrackets++
+    else if (ch === ']') openBrackets--
+  }
+
+  // If we're inside a string, close it
+  if (inString) {
+    repaired += '"'
+  }
+
+  // Close arrays then objects (arrays are usually nested inside objects)
+  while (openBrackets > 0) { repaired += ']'; openBrackets-- }
+  while (openBraces > 0) { repaired += '}'; openBraces-- }
+
+  return repaired
+}
+
+// Applies AI edit patches to an existing element tree
+// Each change targets an element by ID and merges style/props or adds/removes elements
+function applyPatches(elements: FlowElement[], changes: any[]): FlowElement[] {
+  // Build a lookup of changes by ID for fast access
+  const changeMap = new Map<string, any>()
+  for (const change of changes) {
+    if (change.id) changeMap.set(change.id, change)
+  }
+
+  // Recursive function to process the tree
+  function processElement(el: FlowElement): FlowElement | null {
+    const change = changeMap.get(el.id)
+
+    // If this element is marked for removal, return null
+    if (change?.remove) return null
+
+    // Clone the element
+    let updated: FlowElement = { ...el }
+
+    // Apply style merge
+    if (change?.style) {
+      updated.style = { ...(updated.style || {}), ...change.style }
+    }
+
+    // Apply props merge
+    if (change?.props) {
+      updated.props = { ...(updated.props || {}), ...change.props }
+    }
+
+    // Replace action(s) if provided
+    if (change?.action !== undefined) {
+      updated.action = change.action
+    }
+    if (change?.actions !== undefined) {
+      updated.actions = change.actions
+    }
+
+    // Replace visibility rules if provided
+    if (change?.visibleWhen !== undefined) {
+      updated.visibleWhen = change.visibleWhen
+    }
+    if (change?.conditions !== undefined) {
+      updated.conditions = change.conditions
+    }
+
+    // Process children
+    if (change?.children) {
+      // Full children replacement
+      updated.children = change.children
+    } else if (updated.children) {
+      // Recursively process existing children
+      let newChildren: FlowElement[] = []
+      for (const child of updated.children) {
+        const processed = processElement(child)
+        if (processed) {
+          newChildren.push(processed)
+
+          // Check if there's an insertChild targeting "after:this_child_id"
+          for (const [, c] of changeMap) {
+            if (c.insertChild && c.id === el.id && c.position === `after:${child.id}`) {
+              newChildren.push(c.insertChild)
+            }
+          }
+        }
+      }
+
+      // Handle insertChild with position "first" or "before:id"
+      for (const [, c] of changeMap) {
+        if (c.insertChild && c.id === el.id) {
+          if (c.position === 'first') {
+            newChildren = [c.insertChild, ...newChildren]
+          } else if (c.position === 'last' || !c.position) {
+            // Default: append at end (only if not already inserted via after:)
+            if (!c.position || c.position === 'last') {
+              const alreadyInserted = newChildren.some((ch: FlowElement) => ch.id === c.insertChild.id)
+              if (!alreadyInserted) {
+                newChildren.push(c.insertChild)
+              }
+            }
+          } else if (c.position?.startsWith('before:')) {
+            const beforeId = c.position.replace('before:', '')
+            const idx = newChildren.findIndex((ch: FlowElement) => ch.id === beforeId)
+            if (idx !== -1) {
+              newChildren.splice(idx, 0, c.insertChild)
+            } else {
+              newChildren.push(c.insertChild)
+            }
+          }
+        }
+      }
+
+      updated.children = newChildren
+    }
+
+    return updated
+  }
+
+  // Process root-level elements
+  return elements.map(el => processElement(el)).filter((el): el is FlowElement => el !== null)
+}
+
 function AIChatBuilder({
   selectedScreen,
   screens,
@@ -3269,6 +3587,8 @@ function AIChatBuilder({
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamingText, setStreamingText] = useState('')
+  const [streamingType, setStreamingType] = useState<'message' | 'generation' | 'edit' | null>(null)
+  const [showStreamingJSON, setShowStreamingJSON] = useState(false)
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -3498,6 +3818,7 @@ function AIChatBuilder({
 
       const decoder = new TextDecoder()
       let fullText = ''
+      let detectedType: 'message' | 'generation' | 'edit' | null = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -3505,10 +3826,40 @@ function AIChatBuilder({
         const chunk = decoder.decode(value, { stream: true })
         fullText += chunk
         setStreamingText(fullText)
+
+        // Detect response type early from the first ~50 chars
+        if (!detectedType && fullText.length > 15) {
+          if (fullText.includes('"type":"message"') || fullText.includes('"type": "message"')) {
+            detectedType = 'message'
+            setStreamingType('message')
+          } else if (fullText.includes('"type":"edit"') || fullText.includes('"type": "edit"')) {
+            detectedType = 'edit'
+            setStreamingType('edit')
+          } else if (fullText.includes('"type":"generation"') || fullText.includes('"type": "generation"')) {
+            detectedType = 'generation'
+            setStreamingType('generation')
+          }
+        }
       }
       // Flush the decoder
       fullText += decoder.decode()
-      setStreamingText('')
+
+      // For edit type, show "Applying changes..." during the merge phase
+      if (detectedType === 'edit') {
+        setStreamingText('')
+        setStreamingType('edit')
+      } else {
+        setStreamingText('')
+        setStreamingType(null)
+      }
+
+      // Extract stop_reason metadata from end of stream
+      let wasTruncated = false
+      const stopMatch = fullText.match(/\n__STOP:(\w+)__$/)
+      if (stopMatch) {
+        wasTruncated = stopMatch[1] === 'max_tokens'
+        fullText = fullText.replace(/\n__STOP:\w+__$/, '')
+      }
 
       // Strip markdown code fences if present (AI sometimes wraps JSON in ```json ... ```)
       let jsonText = fullText.trim()
@@ -3533,21 +3884,41 @@ function AIChatBuilder({
       try {
         data = JSON.parse(jsonText)
       } catch (parseError) {
-        console.error('Failed to parse AI response:', fullText)
+        // If truncated (max_tokens hit), attempt to repair the JSON
+        if (wasTruncated) {
+          console.warn('Response was truncated (max_tokens). Attempting JSON repair...')
+          try {
+            data = JSON.parse(repairTruncatedJSON(jsonText))
+            console.log('JSON repair successful')
+          } catch (repairError) {
+            console.error('JSON repair also failed:', repairError)
+            const assistantMessage: ChatMessage = {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              content: 'The screen is too complex for a single AI response (output was truncated). Try making smaller, targeted changes instead of regenerating the whole screen.',
+              timestamp: Date.now(),
+            }
+            onMessagesChange([...updatedMessages, assistantMessage])
+            setIsGenerating(false)
+            return
+          }
+        } else {
+          console.error('Failed to parse AI response:', fullText)
 
-        // Show the AI's plain text response as a message instead of crashing
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: `Error: AI returned plain text instead of JSON. Please try rephrasing your request.\n\nAI said: "${fullText.substring(0, 200)}${fullText.length > 200 ? '...' : ''}"`,
-          timestamp: Date.now(),
+          // Show the AI's plain text response as a message instead of crashing
+          const assistantMessage: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: `Error: AI returned plain text instead of JSON. Please try rephrasing your request.\n\nAI said: "${fullText.substring(0, 200)}${fullText.length > 200 ? '...' : ''}"`,
+            timestamp: Date.now(),
+          }
+          onMessagesChange([...updatedMessages, assistantMessage])
+          setIsGenerating(false)
+          return
         }
-        onMessagesChange([...updatedMessages, assistantMessage])
-        setIsGenerating(false)
-        return
       }
 
-      // Check if this is a conversational message or screen generation
+      // Check if this is a conversational message, patch edit, or full generation
       if (data.type === 'message') {
         // AI is responding conversationally, not generating a screen
         const assistantMessage: ChatMessage = {
@@ -3557,8 +3928,38 @@ function AIChatBuilder({
           timestamp: Date.now(),
         }
         onMessagesChange([...updatedMessages, assistantMessage])
+      } else if (data.type === 'edit') {
+        // AI returned patches — apply them to the existing element tree
+        const existingElements = currentScreen?.elements || []
+        const patchedElements = applyPatches(existingElements, data.changes || [])
+
+        // Restore base64 image URLs
+        const restoredElements = Object.keys(imageUrlMap).length > 0
+          ? restoreBase64Urls(patchedElements, imageUrlMap)
+          : patchedElements
+
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: data.message || 'Screen updated.',
+          elements: restoredElements,
+          timestamp: Date.now(),
+        }
+
+        onMessagesChange([...updatedMessages, assistantMessage])
+
+        // Update the screen preview
+        onScreenUpdate({
+          ...currentScreen,
+          type: 'noboard_screen' as const,
+          elements: restoredElements,
+          aiGenerated: true,
+        })
+
+        // Refresh credits after successful generation
+        onCreditsUpdate?.()
       } else if (data.type === 'generation') {
-        // AI generated/modified a screen
+        // AI generated a full screen (new screen or complete redesign)
         // Restore original base64 image URLs into the AI's returned elements
         const restoredElements = Object.keys(imageUrlMap).length > 0
           ? restoreBase64Urls(data.elements, imageUrlMap)
@@ -3624,6 +4025,7 @@ function AIChatBuilder({
       onMessagesChange([...updatedMessages, errorMessage])
     } finally {
       setIsGenerating(false)
+      setStreamingType(null)
       onGeneratingChange?.(false)
     }
   }
@@ -3678,16 +4080,128 @@ function AIChatBuilder({
               lineHeight: '1.5',
               wordBreak: 'break-word' as const,
             }}>
-              {streamingText ? extractStreamingPreview(streamingText) : 'Thinking...'}
-              <span style={{
-                display: 'inline-block',
-                width: 6,
-                height: 14,
-                backgroundColor: theme.colors.textMuted,
-                marginLeft: 2,
-                verticalAlign: 'text-bottom',
-                animation: 'blink 1s steps(2) infinite',
-              }} />
+              {/* Neutral thinking state or message-type streaming (no generation UI) */}
+              {(!streamingType || streamingType === 'message') && (
+                <div>
+                  {streamingText ? extractStreamingPreview(streamingText) : 'Thinking...'}
+                  <span style={{
+                    display: 'inline-block',
+                    width: 6,
+                    height: 14,
+                    backgroundColor: theme.colors.textMuted,
+                    marginLeft: 2,
+                    verticalAlign: 'text-bottom',
+                    animation: 'blink 1s steps(2) infinite',
+                  }} />
+                </div>
+              )}
+
+              {/* Edit-type streaming: show JSON stream with toggle, then "Applying changes..." on merge */}
+              {streamingType === 'edit' && (
+                <>
+                  <div>
+                    {streamingText
+                      ? (extractStreamingPreview(streamingText) || 'Reading changes...')
+                      : 'Applying changes...'
+                    }
+                    <span style={{
+                      display: 'inline-block',
+                      width: 6,
+                      height: 14,
+                      backgroundColor: theme.colors.textMuted,
+                      marginLeft: 2,
+                      verticalAlign: 'text-bottom',
+                      animation: 'blink 1s steps(2) infinite',
+                    }} />
+                  </div>
+
+                  {/* JSON viewer (only while streaming) */}
+                  {streamingText && showStreamingJSON && (
+                    <StreamingJSONViewer jsonText={streamingText} />
+                  )}
+
+                  {/* Toggle button (only while streaming) */}
+                  {streamingText && (
+                    <button
+                      onClick={() => setShowStreamingJSON(!showStreamingJSON)}
+                      style={{
+                        marginTop: theme.spacing.sm,
+                        padding: '6px 10px',
+                        fontSize: '11px',
+                        backgroundColor: 'transparent',
+                        color: theme.colors.textMuted,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: theme.borderRadius.sm,
+                        cursor: 'pointer',
+                        fontFamily: theme.fonts.sans,
+                        transition: 'all 0.2s',
+                        display: 'block',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = theme.colors.primary
+                        e.currentTarget.style.color = theme.colors.primary
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = theme.colors.border
+                        e.currentTarget.style.color = theme.colors.textMuted
+                      }}
+                    >
+                      {showStreamingJSON ? 'hide { }' : 'show { }'}
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Generation-type streaming: show building UI with JSON toggle */}
+              {streamingType === 'generation' && (
+                <>
+                  <div>
+                    {extractStreamingPreview(streamingText) || 'Building screen...'}
+                    <span style={{
+                      display: 'inline-block',
+                      width: 6,
+                      height: 14,
+                      backgroundColor: theme.colors.textMuted,
+                      marginLeft: 2,
+                      verticalAlign: 'text-bottom',
+                      animation: 'blink 1s steps(2) infinite',
+                    }} />
+                  </div>
+
+                  {/* JSON viewer */}
+                  {showStreamingJSON && (
+                    <StreamingJSONViewer jsonText={streamingText} />
+                  )}
+
+                  {/* Toggle button at bottom */}
+                  <button
+                    onClick={() => setShowStreamingJSON(!showStreamingJSON)}
+                    style={{
+                      marginTop: theme.spacing.sm,
+                      padding: '6px 10px',
+                      fontSize: '11px',
+                      backgroundColor: 'transparent',
+                      color: theme.colors.textMuted,
+                      border: `1px solid ${theme.colors.border}`,
+                      borderRadius: theme.borderRadius.sm,
+                      cursor: 'pointer',
+                      fontFamily: theme.fonts.sans,
+                      transition: 'all 0.2s',
+                      display: 'block',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = theme.colors.primary
+                      e.currentTarget.style.color = theme.colors.primary
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = theme.colors.border
+                      e.currentTarget.style.color = theme.colors.textMuted
+                    }}
+                  >
+                    {showStreamingJSON ? 'hide { }' : 'show { }'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -3808,6 +4322,60 @@ function AIChatBuilder({
           }}
           title="Send"
         >{'\u2191'}</button>
+      </div>
+    </div>
+  )
+}
+
+function StreamingJSONViewer({ jsonText }: { jsonText: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when JSON updates
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    }
+  }, [jsonText])
+
+  return (
+    <div style={{ position: 'relative', marginTop: theme.spacing.sm }}>
+      {/* Fade gradient overlay at top */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '24px',
+        background: 'linear-gradient(to bottom, rgba(26, 26, 26, 0.95), transparent)',
+        pointerEvents: 'none',
+        zIndex: 1,
+        borderTopLeftRadius: theme.borderRadius.md,
+        borderTopRightRadius: theme.borderRadius.md,
+      }} />
+
+      {/* Scrollable JSON container */}
+      <div
+        ref={containerRef}
+        style={{
+          maxHeight: '180px',
+          overflowY: 'auto',
+          backgroundColor: '#1a1a1a',
+          borderRadius: theme.borderRadius.md,
+          padding: theme.spacing.sm,
+          fontFamily: theme.fonts.mono,
+          fontSize: '11px',
+          lineHeight: '1.4',
+          color: '#a0a0a0',
+          border: `1px solid ${theme.colors.border}`,
+        }}
+      >
+        <pre style={{
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+        }}>
+          {jsonText}
+        </pre>
       </div>
     </div>
   )

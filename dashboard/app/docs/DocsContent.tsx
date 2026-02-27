@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, Heading, Text } from '@/components/ui'
 import { theme } from '@/lib/theme'
 import type { CustomScreenInfo } from './page'
+import { trackSdkDocsViewed, trackSdkApiKeyCopied } from '@/lib/mixpanel'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -135,9 +136,10 @@ interface DocsContentProps {
   testApiKey: string
   productionApiKey: string
   customScreens: CustomScreenInfo[]
+  isAuthenticated: boolean
 }
 
-export function DocsContent({ testApiKey, productionApiKey, customScreens }: DocsContentProps) {
+export function DocsContent({ testApiKey, productionApiKey, customScreens, isAuthenticated }: DocsContentProps) {
   const searchParams = useSearchParams()
   const [activeSection, setActiveSection] = useState<Section>('quick-start')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -151,6 +153,11 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens }: Doc
       setActiveSection(section as Section)
     }
   }, [searchParams])
+
+  // Track section views
+  useEffect(() => {
+    trackSdkDocsViewed(activeSection)
+  }, [activeSection])
 
   const toggleGroup = (label: string) => {
     setCollapsedGroups(prev => {
@@ -173,7 +180,7 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens }: Doc
   }, [searchQuery])
 
   const copyPrompt = () => {
-    const prompt = buildAIPrompt(testApiKey, productionApiKey, customScreens)
+    const prompt = buildAIPrompt()
     navigator.clipboard.writeText(prompt)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -182,8 +189,8 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens }: Doc
   const renderSection = () => {
     switch (activeSection) {
       case 'quick-start': return <QuickStartSection onNavigate={setActiveSection} />
-      case 'ai-setup': return <AISetupSection testApiKey={testApiKey} productionApiKey={productionApiKey} customScreens={customScreens} onCopy={copyPrompt} copied={copied} />
-      case 'installation': return <InstallationSection testApiKey={testApiKey} productionApiKey={productionApiKey} />
+      case 'ai-setup': return <AISetupSection onCopy={copyPrompt} copied={copied} />
+      case 'installation': return <InstallationSection testApiKey={testApiKey} productionApiKey={productionApiKey} isAuthenticated={isAuthenticated} />
       case 'custom-screens': return <CustomScreensSection />
       case 'variables': return <VariablesSection />
       case 'revenuecat': return <RevenueCatSection />
@@ -333,126 +340,237 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens }: Doc
 
 // ── AI Prompt Builder ──────────────────────────────────────────────────
 
-function buildAIPrompt(testApiKey: string, productionApiKey: string, customScreens: CustomScreenInfo[]): string {
-  let customScreenTable = ''
-  if (customScreens.length > 0) {
-    customScreenTable = `
+function buildAIPrompt(): string {
+  return `I need help integrating the Noboarding SDK into my React Native / Expo app. Noboarding is a server-driven onboarding SDK — I design my onboarding screens in a web dashboard, and the SDK renders them natively in my app. No app update needed to change screens.
 
-## My Existing Custom Screens
+## Before You Start — Ask Me These Questions
 
-Here are the custom screens already configured in my Noboarding dashboard. Each needs a matching React Native component:
+Before writing any code, please ask me the following questions so you can tailor the integration to my app:
 
-| Flow | Component Name | Description | Variables (received/set) |
-|------|---------------|-------------|--------------------------|
-${customScreens.map(s => `| ${s.flowName} | ${s.componentName} | ${s.description || 'N/A'} | ${s.variables.length > 0 ? s.variables.join(', ') : 'None'} |`).join('\n')}
+1. **What package manager do you use?** (npm, yarn, or bun)
+2. **What are your Noboarding API keys?** (You can find them in the Noboarding dashboard under Settings. You need a Test Key starting with nb_test_ and a Production Key starting with nb_live_.)
+3. **Do you have a notification/permissions screen in your onboarding flow?** (e.g. asking for push notification permission, camera access, etc.) If yes, we'll create a custom screen component for it.
+4. **Do you have a sign-in or sign-up screen in your onboarding flow?** If yes, we'll create a custom screen component that integrates with my auth provider.
+5. **Would you like to connect a paywall to your onboarding flow?** If yes, I'll need RevenueCat set up. We'll create a PaywallScreen custom component and configure the webhook for conversion tracking.
+6. **Do you have any other custom screens** that need native code (e.g. a survey, a profile setup form, a fitness tracker connection)? If yes, describe each one.
 
-Please implement each of these custom screen components following the CustomScreenProps interface from the Noboarding SDK.`
+Wait for my answers before proceeding. Then follow the steps below based on what I need.
+
+---
+
+## My Noboarding API Keys
+
+- Test API Key (for development): [YOUR_NB_TEST_KEY]
+- Production API Key (for production): [YOUR_NB_LIVE_KEY]
+
+(Get these from the Noboarding dashboard → Settings page)
+
+---
+
+## Step 1: Install the Noboarding SDK
+
+Install the SDK and its peer dependency:
+
+\`\`\`bash
+npm install noboarding @react-native-async-storage/async-storage
+\`\`\`
+
+---
+
+## Step 2: Add OnboardingFlow to My App
+
+Wrap my app's entry point with the OnboardingFlow component. Here's the basic setup:
+
+\`\`\`tsx
+import { OnboardingFlow } from 'noboarding';
+
+export default function App() {
+  const [showOnboarding, setShowOnboarding] = useState(true);
+
+  if (showOnboarding) {
+    return (
+      <OnboardingFlow
+        testKey="[YOUR_NB_TEST_KEY]"
+        productionKey="[YOUR_NB_LIVE_KEY]"
+        onComplete={(userData) => {
+          // userData contains all collected data from the flow
+          // userData._variables has all variable values
+          console.log('Onboarding complete:', userData);
+          setShowOnboarding(false);
+        }}
+        onSkip={() => {
+          setShowOnboarding(false);
+        }}
+        // Add customComponents here if I have custom screens (see below)
+        // Add onUserIdGenerated here if using RevenueCat (see below)
+      />
+    );
   }
 
-  return `I need you to integrate the Noboarding SDK into my React Native app with RevenueCat paywall support. Here are the requirements:
+  return <MyMainApp />;
+}
+\`\`\`
 
-## Context
-- I already have RevenueCat configured in my app with API keys
-- I have a Noboarding account with two API keys:
-  - Test API Key (for development): ${testApiKey || '[No test key found — check Settings]'}
-  - Production API Key (for production): ${productionApiKey || '[No production key found — check Settings]'}
-- My RevenueCat iOS key: [PASTE_YOUR_IOS_KEY_HERE]
-- My RevenueCat Android key: [PASTE_YOUR_ANDROID_KEY_HERE]
-${customScreenTable}
+**How it works:**
+- The SDK automatically uses \`testKey\` when \`__DEV__ === true\` (dev mode) and \`productionKey\` when \`__DEV__ === false\` (production builds).
+- The onboarding screens are designed in the Noboarding web dashboard — no screen code is written here. The SDK fetches and renders them natively.
 
-## Task 1: Install Noboarding SDK
+---
 
-1. Install the Noboarding SDK package:
-   \`\`\`bash
-   npm install noboarding
-   # or
-   yarn add noboarding
-   \`\`\`
+## Step 3: Custom Screen Components (If Needed)
 
-2. Install peer dependencies if not already installed:
-   \`\`\`bash
-   npm install @react-native-async-storage/async-storage
-   \`\`\`
+Custom screens are React Native components that I build and register with the SDK. They're used for anything the visual dashboard builder can't handle — paywalls, sign-in forms, permission prompts, etc.
 
-## Task 2: Create RevenueCat Paywall Screen
+Every custom screen receives these props:
 
-Create a new file at \`src/screens/PaywallScreen.tsx\` with the following implementation:
+\`\`\`tsx
+import { CustomScreenProps } from 'noboarding';
 
-Requirements for the PaywallScreen component:
-- Import CustomScreenProps from 'noboarding'
-- Import necessary RevenueCat types (PurchasesOffering, PurchasesPackage)
-- Use analytics.track() for these events:
-  - paywall_viewed (on mount)
-  - paywall_loaded (when offerings load)
-  - paywall_purchase_started
-  - paywall_conversion (on successful purchase)
-  - paywall_purchase_failed
-  - paywall_dismissed (when user skips)
-- Implement preview mode that shows a placeholder UI when preview={true}
-- Load offerings from RevenueCat using Purchases.getOfferings()
-- Handle purchase with Purchases.purchasePackage()
-- Check for premium entitlement after purchase
-- Call onDataUpdate() with purchase info on successful purchase
-- Call onNext() to continue after purchase
-- Call onSkip() or onNext() when user dismisses
+interface CustomScreenProps {
+  analytics: { track: (event: string, properties?: Record<string, any>) => void };
+  onNext: () => void;          // Go to next screen
+  onBack?: () => void;         // Go to previous screen
+  onSkip?: () => void;         // Skip entire onboarding
+  preview?: boolean;           // true when rendering in the dashboard preview
+  data?: Record<string, any>;  // Data from previous screens
+  onDataUpdate?: (data: Record<string, any>) => void; // Pass data to next screens
+}
+\`\`\`
 
-The component should:
-- Show loading state while fetching offerings
-- Display all available packages from the current offering
-- Show package title, price, and any intro pricing
-- Have a "Restore Purchases" button
-- Have a skip/dismiss button (conditionally shown if onSkip is provided)
-- Use Alert.alert() to show success/error messages
-- Style it nicely with a modern, clean UI
+Register custom screens like this:
 
-## Task 3: Integrate SDK in App.tsx
+\`\`\`tsx
+<OnboardingFlow
+  testKey="..."
+  productionKey="..."
+  customComponents={{
+    PaywallScreen: PaywallScreen,       // key must EXACTLY match the name in the dashboard
+    NotificationScreen: NotificationScreen,
+    SignUpScreen: SignUpScreen,
+  }}
+  onComplete={(userData) => { ... }}
+/>
+\`\`\`
 
-Update the main App.tsx file:
+**Important:** The key name (e.g. \`PaywallScreen\`) must exactly match the component name entered in the Noboarding dashboard. It is case-sensitive.
 
-1. Import OnboardingFlow from 'noboarding'
-2. Import the PaywallScreen component
-3. Import Purchases from 'react-native-purchases'
-4. Add state to manage onboarding visibility: useState(true)
-5. In useEffect, configure RevenueCat with the API keys I provided above
-6. Render OnboardingFlow component with:
-   - testKey="${testApiKey || 'nb_test_your_test_key_here'}"
-   - productionKey="${productionApiKey || 'nb_live_your_production_key_here'}"
-   - NOTE: The SDK automatically detects the environment using __DEV__ and uses the appropriate key
-   - customComponents={{ PaywallScreen: PaywallScreen${customScreens.length > 0 ? customScreens.map(s => `, ${s.componentName}: ${s.componentName}`).join('') : ''} }}
-   - onUserIdGenerated callback that calls Purchases.logIn(userId) - CRITICAL for attribution
-   - onComplete callback that logs userData and hides onboarding
-   - onSkip callback (optional)
-7. Show main app content when onboarding is complete
+### If the user wants a Paywall Screen (RevenueCat):
 
-## Task 4: Configure RevenueCat Webhook
+Create a PaywallScreen component that:
+- Imports \`CustomScreenProps\` from \`noboarding\`
+- Imports \`Purchases\` from \`react-native-purchases\`
+- Tracks these analytics events: \`paywall_viewed\` (on mount), \`paywall_loaded\` (offerings loaded), \`paywall_purchase_started\`, \`paywall_conversion\` (success), \`paywall_purchase_failed\`, \`paywall_dismissed\` (skip)
+- Shows placeholder UI when \`preview === true\` (dashboard can't run native purchases)
+- Loads offerings via \`Purchases.getOfferings()\`
+- Handles purchase via \`Purchases.purchasePackage(pkg)\`
+- Calls \`onDataUpdate?.({ premium: true })\` on successful purchase
+- Calls \`onNext()\` after purchase to continue the flow
+- Has a "Restore Purchases" button
+- Has a skip/dismiss option
 
-After you complete the code changes, provide me with instructions to configure the RevenueCat webhook. The webhook should point to:
+### If the user wants a Notification/Permission Screen:
 
-**Webhook URL:** https://hhmmzmrsptegprfztqtq.supabase.co/functions/v1/revenuecat-webhook
-**Authorization Header:** Bearer c3373PFzv9wPpISOu5XFz22zABeLjpzYwGqmclXR60o=
+Create a component that:
+- Requests the relevant permission (push notifications, camera, etc.)
+- Tracks \`notification_permission_granted\` or \`notification_permission_denied\`
+- Calls \`onNext()\` after the user responds
+- Shows a placeholder in preview mode
 
-Tell me:
-1. Where to find the webhook settings in RevenueCat dashboard
-2. Which events to select (minimum: INITIAL_PURCHASE, RENEWAL, CANCELLATION)
-3. How to test the webhook
+### If the user wants a Sign-In/Sign-Up Screen:
 
-## Task 5: Usage Instructions
+Create a component that:
+- Integrates with their existing auth provider
+- Tracks \`signup_completed\` or \`login_completed\`
+- Calls \`onDataUpdate?.({ userId: user.id })\` to pass the user ID forward
+- Calls \`onNext()\` after successful auth
 
-After completing the integration, provide me with:
-1. How to add the PaywallScreen to my onboarding flow in the Noboarding dashboard
-2. How to test the integration locally
-3. What analytics events I can expect to see
-4. How conversions will be tracked
+---
+
+## Step 4: RevenueCat Integration (If Using Paywall)
+
+If the user wants paywall support, configure RevenueCat:
+
+### 4a. Install RevenueCat SDK
+\`\`\`bash
+npm install react-native-purchases
+# iOS: cd ios && pod install
+\`\`\`
+
+### 4b. Configure RevenueCat in App
+\`\`\`tsx
+import Purchases from 'react-native-purchases';
+import { Platform } from 'react-native';
+
+useEffect(() => {
+  Purchases.configure({
+    apiKey: Platform.OS === 'ios' ? 'appl_YOUR_IOS_KEY' : 'goog_YOUR_ANDROID_KEY',
+  });
+}, []);
+\`\`\`
+Ask the user for their RevenueCat API keys if they haven't provided them.
+
+### 4c. CRITICAL — Sync User IDs
+Add the \`onUserIdGenerated\` callback so Noboarding and RevenueCat share the same user ID. Without this, conversion tracking and A/B test attribution will not work:
+
+\`\`\`tsx
+<OnboardingFlow
+  testKey="..."
+  productionKey="..."
+  onUserIdGenerated={(userId) => {
+    Purchases.logIn(userId); // Syncs Noboarding user ID with RevenueCat
+  }}
+  customComponents={{ PaywallScreen }}
+  onComplete={(userData) => { ... }}
+/>
+\`\`\`
+
+### 4d. Configure RevenueCat Webhook
+Tell the user to set up a webhook in their RevenueCat dashboard so Noboarding receives purchase events:
+
+1. Go to RevenueCat Dashboard → Integrations → Webhooks
+2. Click "Add New Webhook"
+3. Webhook URL: \`https://hhmmzmrsptegprfztqtq.supabase.co/functions/v1/revenuecat-webhook\`
+4. Authorization header: \`Bearer c3373PFzv9wPpISOu5XFz22zABeLjpzYwGqmclXR60o=\`
+5. Select events: INITIAL_PURCHASE, TRIAL_STARTED, RENEWAL, CANCELLATION
+6. Save and send a test event
+
+---
+
+## Step 5: Dashboard Setup
+
+After the code integration is complete, tell the user to:
+
+1. Log in to the **Noboarding dashboard** (https://noboarding.com)
+2. Create or open an onboarding flow
+3. Design the SDK screens using the visual builder or AI builder
+4. If they have custom screens: click **"Add Custom Screen"** and enter the exact component name (e.g. \`PaywallScreen\`)
+5. Arrange screens in the desired order
+6. Click **Publish → Publish for Testing** to make the flow available in development
+7. Test in the app with \`npm start\` / \`npx expo start\`
+8. When ready for production: **Publish → Publish to Production**
+
+---
+
+## SDK Analytics Events (Automatic)
+
+These events are tracked automatically by the SDK — no code needed:
+
+| Event | When |
+|-------|------|
+| onboarding_started | Flow loads and first screen appears |
+| screen_viewed | User navigates to a new screen |
+| screen_completed | User completes a screen |
+| onboarding_completed | User reaches the end of the flow |
+| onboarding_abandoned | User skips/dismisses the flow |
+
+---
 
 ## Important Notes
 - Use TypeScript for all files
-- Follow React Native best practices
-- Add proper error handling
-- Include loading states
-- Make the UI accessible
-- Add comments explaining critical parts (especially the onUserIdGenerated callback)
-
-Please implement all of this and let me know when you're done. If you need any clarification on my existing code structure, ask me first before making assumptions.`
+- The SDK only works with React Native / Expo apps
+- Follow React Native best practices with proper error handling and loading states
+- Add comments explaining the onUserIdGenerated callback (it's critical for analytics)
+- Ask me questions if anything about my app setup is unclear — don't make assumptions`
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -583,19 +701,13 @@ function QuickStartSection({ onNavigate }: { onNavigate: (s: Section) => void })
 // ── 2. AI Setup ────────────────────────────────────────────────────────
 
 function AISetupSection({
-  testApiKey,
-  productionApiKey,
-  customScreens,
   onCopy,
   copied,
 }: {
-  testApiKey: string
-  productionApiKey: string
-  customScreens: CustomScreenInfo[]
   onCopy: () => void
   copied: boolean
 }) {
-  const prompt = buildAIPrompt(testApiKey, productionApiKey, customScreens)
+  const prompt = buildAIPrompt()
 
   return (
     <div>
@@ -603,102 +715,17 @@ function AISetupSection({
         AI Setup
       </Heading>
       <Text variant="muted" style={{ marginBottom: theme.spacing.xl }}>
-        Set up Noboarding using your AI coding assistant
+        Let your AI coding assistant set up Noboarding for you in minutes
       </Text>
 
       <Callout color="blue">
         <Heading level={3} serif style={{ marginBottom: theme.spacing.sm }}>
-          For developers using AI coding assistants
+          How this works
         </Heading>
         <Text variant="muted">
-          Copy the instructions below and paste them into your AI coding assistant (Claude Code, Cursor, GitHub Copilot, etc.) to automatically set up the Noboarding SDK with RevenueCat integration. Your API keys have been pre-filled.
+          Copy the prompt below and paste it into your AI coding assistant (Claude Code, Cursor, GitHub Copilot, etc.). The AI will ask you a few questions about your app — like whether you need a paywall, notification permissions, or sign-up screen — then set up everything automatically based on your answers. It will also ask for your API keys, which you can find in the dashboard under Settings.
         </Text>
       </Callout>
-
-      {/* API Keys Status */}
-      <div style={sectionGap}>
-        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Your API Keys
-        </Heading>
-        <div style={{ display: 'flex', gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
-          <div style={{ flex: 1 }}>
-            <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.xs }}>Test Key</Text>
-            <code style={{
-              display: 'block',
-              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-              backgroundColor: theme.colors.background,
-              borderRadius: theme.borderRadius.sm,
-              fontFamily: theme.fonts.mono,
-              fontSize: theme.fontSizes.xs,
-              color: testApiKey ? theme.colors.text : theme.colors.textMuted,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>
-              {testApiKey || 'Not found — check Settings'}
-            </code>
-          </div>
-          <div style={{ flex: 1 }}>
-            <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.xs }}>Production Key</Text>
-            <code style={{
-              display: 'block',
-              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-              backgroundColor: theme.colors.background,
-              borderRadius: theme.borderRadius.sm,
-              fontFamily: theme.fonts.mono,
-              fontSize: theme.fontSizes.xs,
-              color: productionApiKey ? theme.colors.text : theme.colors.textMuted,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>
-              {productionApiKey || 'Not found — check Settings'}
-            </code>
-          </div>
-        </div>
-      </div>
-
-      {/* Custom Screen Variable Table */}
-      <div style={sectionGap}>
-        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Your Custom Screens
-        </Heading>
-        {customScreens.length > 0 ? (
-          <>
-            <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.sm }}>
-              These custom screens from your flows will be included in the AI prompt so your assistant knows what components to build.
-            </Text>
-            <div style={{ overflowX: 'auto', marginBottom: theme.spacing.md }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Flow</th>
-                    <th style={thStyle}>Component Name</th>
-                    <th style={thStyle}>Description</th>
-                    <th style={thStyle}>Variables</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customScreens.map((s, i) => (
-                    <tr key={`${s.screenId}-${i}`} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : theme.colors.background }}>
-                      <td style={tdStyle}>{s.flowName}</td>
-                      <td style={{ ...tdStyle, fontFamily: theme.fonts.mono, fontSize: theme.fontSizes.xs }}>{s.componentName}</td>
-                      <td style={tdStyle}>{s.description || <span style={{ color: theme.colors.textMuted }}>—</span>}</td>
-                      <td style={{ ...tdStyle, fontFamily: theme.fonts.mono, fontSize: theme.fontSizes.xs }}>
-                        {s.variables.length > 0 ? s.variables.join(', ') : <span style={{ color: theme.colors.textMuted }}>None</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ) : (
-          <Card padding="md" style={{ backgroundColor: theme.colors.background }}>
-            <Text variant="muted" size="sm">
-              No custom screens found. Custom screens will appear here once you add them to your flows in the dashboard.
-            </Text>
-          </Card>
-        )}
-      </div>
 
       {/* Prompt Block */}
       <div style={sectionGap}>
@@ -726,69 +753,47 @@ function AISetupSection({
           </button>
         </div>
         <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.sm }}>
-          Copy everything in the box below and paste it to your AI coding assistant:
+          Copy everything in the box below and paste it into your AI coding assistant:
         </Text>
         <Card padding="none">
           <pre style={{ ...codeBlockStyle, maxHeight: 500, overflow: 'auto' }}>{prompt}</pre>
         </Card>
       </div>
 
-      {/* Post-Setup Steps */}
+      {/* What happens next */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          After Your AI Assistant Completes the Setup
+          What Happens Next
         </Heading>
-
-        <div style={{ marginBottom: theme.spacing.lg }}>
-          <Text style={{ fontWeight: '600', marginBottom: theme.spacing.sm }}>
-            1. Add PaywallScreen to Dashboard
-          </Text>
-          <ul style={{ marginLeft: theme.spacing.lg }}>
-            <li style={listItemStyle}>Log in to your Noboarding dashboard</li>
-            <li style={listItemStyle}>Go to your onboarding flow</li>
-            <li style={listItemStyle}>Click "Add Custom Screen"</li>
-            <li style={listItemStyle}>Enter component name: <code style={inlineCodeStyle}>PaywallScreen</code></li>
-            <li style={listItemStyle}>Position it in your flow</li>
-            <li style={listItemStyle}>Save and publish</li>
-          </ul>
-        </div>
-
-        <div style={{ marginBottom: theme.spacing.lg }}>
-          <Text style={{ fontWeight: '600', marginBottom: theme.spacing.sm }}>
-            2. Configure RevenueCat Webhook
-          </Text>
-          <ul style={{ marginLeft: theme.spacing.lg }}>
-            <li style={listItemStyle}>Go to <a href="https://app.revenuecat.com/" target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.primary }}>RevenueCat Dashboard</a></li>
-            <li style={listItemStyle}>Navigate to: Integrations → Webhooks</li>
-            <li style={listItemStyle}>Click "Add New Webhook"</li>
-            <li style={listItemStyle}>URL: <code style={inlineCodeStyle}>https://hhmmzmrsptegprfztqtq.supabase.co/functions/v1/revenuecat-webhook</code></li>
-            <li style={listItemStyle}>Authorization: <code style={inlineCodeStyle}>Bearer c3373PFzv9wPpISOu5XFz22zABeLjpzYwGqmclXR60o=</code></li>
-            <li style={listItemStyle}>Events: Select INITIAL_PURCHASE, RENEWAL, CANCELLATION</li>
-            <li style={listItemStyle}>Save and test</li>
-          </ul>
-        </div>
-
-        <div style={{ marginBottom: theme.spacing.lg }}>
-          <Text style={{ fontWeight: '600', marginBottom: theme.spacing.sm }}>
-            3. Test Your Integration
-          </Text>
-          <Card padding="sm" style={{ marginTop: theme.spacing.sm }}>
-            <pre style={codeBlockStyle}>{`npm start
-# Test in development with sandbox purchases`}</pre>
-          </Card>
-        </div>
-
-        <div>
-          <Text style={{ fontWeight: '600', marginBottom: theme.spacing.sm }}>
-            4. Deploy to Production
-          </Text>
-          <ul style={{ marginLeft: theme.spacing.lg }}>
-            <li style={listItemStyle}>Test your flow in development with the Test API Key</li>
-            <li style={listItemStyle}>Click <strong>Publish → Publish for Testing</strong> in the dashboard</li>
-            <li style={listItemStyle}>Build your app for production</li>
-            <li style={listItemStyle}>Submit to App Store / Google Play</li>
-            <li style={listItemStyle}>After approval, click <strong>Publish → Publish to Production</strong> in the dashboard</li>
-          </ul>
+        <div style={{ display: 'flex', gap: theme.spacing.md }}>
+          {[
+            { step: '1', title: 'AI asks questions', desc: 'The AI will ask about your app — paywall, notifications, sign-up, etc. Answer based on what you need.' },
+            { step: '2', title: 'AI writes the code', desc: 'Based on your answers, the AI installs the SDK, creates custom screen components, and wires everything up.' },
+            { step: '3', title: 'Design in the dashboard', desc: 'Once the code is in place, open the Noboarding dashboard to design your onboarding screens and publish.' },
+          ].map((item) => (
+            <div
+              key={item.step}
+              style={{
+                flex: 1,
+                padding: theme.spacing.lg,
+                backgroundColor: theme.colors.surface,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: theme.borderRadius.lg,
+              }}
+            >
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%',
+                backgroundColor: theme.colors.primary, color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: '700', fontSize: theme.fontSizes.sm,
+                marginBottom: theme.spacing.sm,
+              }}>
+                {item.step}
+              </div>
+              <Text style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>{item.title}</Text>
+              <Text variant="muted" size="sm">{item.desc}</Text>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -797,12 +802,20 @@ function AISetupSection({
 
 // ── 3. Installation & Setup ────────────────────────────────────────────
 
-function InstallationSection({ testApiKey, productionApiKey }: { testApiKey: string; productionApiKey: string }) {
+function InstallationSection({ testApiKey, productionApiKey, isAuthenticated }: { testApiKey: string; productionApiKey: string; isAuthenticated: boolean }) {
   return (
     <div>
       <Heading level={1} serif style={{ marginBottom: theme.spacing.xs }}>
         Installation & Setup
       </Heading>
+
+      {!isAuthenticated && (
+        <Callout color="amber">
+          <Text style={{ fontSize: theme.fontSizes.sm }}>
+            📝 You're viewing placeholder API keys. <a href="/login" style={{ color: theme.colors.primary, fontWeight: '600', textDecoration: 'underline' }}>Log in</a> to see your real API keys pre-filled.
+          </Text>
+        </Callout>
+      )}
       <Text variant="muted" style={{ marginBottom: theme.spacing.xl }}>
         Step-by-step guide to manually integrate Noboarding into your app
       </Text>
@@ -1209,134 +1222,282 @@ function VariablesSection() {
         Variables & Conditions
       </Heading>
       <Text variant="muted" style={{ marginBottom: theme.spacing.xl }}>
-        Pass data between screens and create conditional navigation
+        Store user choices, personalize content, and create branching flows — no app update needed
       </Text>
 
       <Callout color="purple">
         <Heading level={3} serif style={{ marginBottom: theme.spacing.sm }}>
-          Dynamic flows powered by variables
+          What are variables?
         </Heading>
         <Text variant="muted">
-          Variables let you personalize screen content, pass data between screens, and create conditional navigation paths — all configured in the dashboard with no app update required.
+          Think of variables as sticky notes attached to your onboarding flow. When a user taps "I'm a beginner" on Screen 1, you can save that choice as a variable (e.g. <code style={inlineCodeStyle}>experience = "beginner"</code>). Later screens can read that variable to show personalized content, or your flow can branch to a completely different path based on the value.
         </Text>
       </Callout>
 
-      {/* What are variables */}
+      {/* Why use variables */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          What Are Variables?
+          Why Use Variables?
         </Heading>
         <Text style={{ marginBottom: theme.spacing.sm }}>
-          Variables are key-value pairs that flow through your onboarding screens. They can be:
+          Variables unlock three powerful capabilities in your onboarding:
         </Text>
-        <ul style={{ marginLeft: theme.spacing.lg }}>
-          <li style={listItemStyle}><strong>Pre-set</strong> — passed via <code style={inlineCodeStyle}>initialVariables</code> prop when the flow starts</li>
-          <li style={listItemStyle}><strong>Collected by custom screens</strong> — set via <code style={inlineCodeStyle}>onDataUpdate()</code> in your components</li>
-          <li style={listItemStyle}><strong>Set by actions</strong> — using the <code style={inlineCodeStyle}>set_variable</code> action type in the dashboard builder</li>
-        </ul>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: theme.spacing.md, marginBottom: theme.spacing.md }}>
+          {[
+            { title: 'Personalization', desc: 'Show the user\'s name, selected preferences, or any stored value inside your screen text.' },
+            { title: 'Branching Logic', desc: 'Send users down different paths based on their choices — e.g. fitness users see workout screens, nutrition users see meal screens.' },
+            { title: 'Data Collection', desc: 'Gather information across screens and pass it to your app when onboarding completes.' },
+          ].map((item) => (
+            <Card key={item.title} padding="md">
+              <Text style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>{item.title}</Text>
+              <Text variant="muted" size="sm">{item.desc}</Text>
+            </Card>
+          ))}
+        </div>
       </div>
 
-      {/* initialVariables */}
+      {/* Setting variables with AI */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Initial Variables
+          Setting Variables with the AI Builder
+        </Heading>
+        <Callout color="blue">
+          <Text variant="muted">
+            The easiest way to work with variables is to <strong>just tell the AI what you want</strong>. Open the AI Builder tab in the screen editor and describe what you need in plain English. The AI will set up the variables, conditions, and actions for you automatically.
+          </Text>
+        </Callout>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          Here are some examples of what you can say to the AI:
+        </Text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm, marginBottom: theme.spacing.md }}>
+          {[
+            { prompt: '"When the user taps \'I\'m a beginner\', save their level as beginner"', result: 'AI adds a set_variable action to the button: experience = "beginner"' },
+            { prompt: '"Show the user\'s name in the welcome text"', result: 'AI inserts {userName} into the text element' },
+            { prompt: '"If the user selected fitness, go to the workout screen. Otherwise go to the general screen"', result: 'AI configures conditional navigation on the button based on the goal variable' },
+            { prompt: '"Add three option buttons that each save a different plan choice"', result: 'AI creates three buttons, each with set_variable: selectedPlan = "free" / "pro" / "team"' },
+          ].map((example, idx) => (
+            <Card key={idx} padding="md" style={{ backgroundColor: theme.colors.background }}>
+              <Text size="sm" style={{ fontWeight: '600', color: theme.colors.primary, marginBottom: theme.spacing.xs }}>
+                You say: {example.prompt}
+              </Text>
+              <Text variant="muted" size="sm">
+                {example.result}
+              </Text>
+            </Card>
+          ))}
+        </div>
+        <Text variant="muted" size="sm">
+          You don't need to understand the technical details below to use variables — the AI handles it. But if you want to configure things manually or understand how it works under the hood, read on.
+        </Text>
+      </div>
+
+      {/* How variables work */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          How Variables Work (Under the Hood)
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.md }}>
+          Variables are key-value pairs that travel with the user through the onboarding flow. There are three ways a variable gets set:
+        </Text>
+        <div style={{ overflowX: 'auto', marginBottom: theme.spacing.md }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Method</th>
+                <th style={thStyle}>Where</th>
+                <th style={thStyle}>How It Works</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['Initial Variables', 'Your app code', 'Pass data you already know (user name, platform, etc.) when the flow starts'],
+                ['set_variable action', 'Dashboard / AI Builder', 'A button tap saves a value — e.g. tapping "Pro Plan" sets selectedPlan = "pro"'],
+                ['Custom screen data', 'Your React Native code', 'Your custom components call onDataUpdate() to pass data forward'],
+              ].map(([method, where, how], i) => (
+                <tr key={method} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : theme.colors.background }}>
+                  <td style={{ ...tdStyle, fontWeight: '600' }}>{method}</td>
+                  <td style={tdStyle}>{where}</td>
+                  <td style={tdStyle}>{how}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Setting variables in the dashboard */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Setting Variables in the Dashboard (Manual)
         </Heading>
         <Text style={{ marginBottom: theme.spacing.sm }}>
-          Pass pre-known data to the flow using <code style={inlineCodeStyle}>initialVariables</code>:
+          If you prefer to configure variables manually instead of using the AI, here's how:
         </Text>
-        <Card padding="sm">
-          <pre style={codeBlockStyle}>{`<OnboardingFlow
-  testKey="nb_test_..."
-  productionKey="nb_live_..."
-  initialVariables={{
-    userName: 'John',
-    isPremium: false,
-    platform: Platform.OS,
-  }}
-  onComplete={(userData) => {
-    // userData._variables contains all variable values
-    console.log(userData._variables);
-  }}
-/>`}</pre>
+        <ol style={{ marginLeft: theme.spacing.lg, marginBottom: theme.spacing.md }}>
+          <li style={listItemStyle}>Open your flow in the dashboard and select the screen you want to edit</li>
+          <li style={listItemStyle}>Click on a button element in the Layout tab</li>
+          <li style={listItemStyle}>In the element settings panel, find the <strong>Actions</strong> section</li>
+          <li style={listItemStyle}>Add a new action with type <code style={inlineCodeStyle}>set_variable</code></li>
+          <li style={listItemStyle}>Enter a <strong>variable name</strong> (e.g. <code style={inlineCodeStyle}>selectedPlan</code>) and a <strong>value</strong> (e.g. <code style={inlineCodeStyle}>pro</code>)</li>
+          <li style={listItemStyle}>When a user taps that button, the variable is saved and available to all subsequent screens</li>
+        </ol>
+        <Card padding="md" style={{ backgroundColor: theme.colors.background }}>
+          <Text size="sm">
+            <strong>Example:</strong> You have three plan buttons — "Free", "Pro", and "Team". Each button has a <code style={inlineCodeStyle}>set_variable</code> action that sets <code style={inlineCodeStyle}>selectedPlan</code> to <code style={inlineCodeStyle}>"free"</code>, <code style={inlineCodeStyle}>"pro"</code>, or <code style={inlineCodeStyle}>"team"</code> respectively. The next screen can then display "You chose the {'{selectedPlan}'} plan!" using template syntax.
+          </Text>
         </Card>
       </div>
 
       {/* Template syntax */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Template Syntax in SDK Screens
+          Displaying Variables in Text (Template Syntax)
         </Heading>
         <Text style={{ marginBottom: theme.spacing.sm }}>
-          In the dashboard builder, use <code style={inlineCodeStyle}>{'{variable_name}'}</code> in text elements to display variable values:
+          You can display any variable's value inside a text element by wrapping the variable name in curly braces: <code style={inlineCodeStyle}>{'{variable_name}'}</code>
         </Text>
-        <Card padding="md" style={{ backgroundColor: theme.colors.background }}>
-          <Text size="sm" style={{ fontFamily: theme.fonts.mono }}>
-            "Welcome back, {'{userName}'}! Let's get you set up."
+        <Text style={{ marginBottom: theme.spacing.md }}>
+          For example, if you set a variable called <code style={inlineCodeStyle}>userName</code> with the value <code style={inlineCodeStyle}>"Sarah"</code>, the text below would render as shown:
+        </Text>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing.md, marginBottom: theme.spacing.sm }}>
+          <Card padding="md" style={{ backgroundColor: '#1a1a1a' }}>
+            <Text size="xs" style={{ color: '#999', marginBottom: theme.spacing.xs, fontWeight: '600' }}>What you type in the dashboard:</Text>
+            <Text size="sm" style={{ fontFamily: theme.fonts.mono, color: '#e5e5e5' }}>
+              Welcome back, {'{userName}'}! Let&apos;s get you set up.
+            </Text>
+          </Card>
+          <Card padding="md" style={{ backgroundColor: theme.colors.background }}>
+            <Text size="xs" style={{ color: theme.colors.textMuted, marginBottom: theme.spacing.xs, fontWeight: '600' }}>What the user sees on their device:</Text>
+            <Text size="sm">
+              Welcome back, Sarah! Let&apos;s get you set up.
+            </Text>
+          </Card>
+        </div>
+        <Text variant="muted" size="sm">
+          If the variable hasn't been set yet, the placeholder text (e.g. {'{userName}'}) is left as-is. Make sure the variable is set on an earlier screen.
+        </Text>
+      </div>
+
+      {/* Conditional navigation */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Conditional Navigation (Branching Flows)
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          This is where variables become really powerful. You can send users down different paths based on the values they've chosen. For example:
+        </Text>
+        <Card padding="md" style={{ backgroundColor: theme.colors.background, marginBottom: theme.spacing.md }}>
+          <Text size="sm" style={{ lineHeight: 1.8 }}>
+            Screen 1: "What's your goal?" — user taps <strong>"Fitness"</strong> → sets <code style={inlineCodeStyle}>goal = "fitness"</code><br/>
+            Screen 2 (conditional): If <code style={inlineCodeStyle}>goal === "fitness"</code> → go to <strong>Workout Setup</strong> screen<br/>
+            Screen 2 (conditional): If <code style={inlineCodeStyle}>goal === "nutrition"</code> → go to <strong>Meal Plan</strong> screen<br/>
+            Screen 2 (default): Otherwise → go to <strong>General Setup</strong> screen
           </Text>
         </Card>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          To set this up, you can either:
+        </Text>
+        <ul style={{ marginLeft: theme.spacing.lg }}>
+          <li style={listItemStyle}><strong>Tell the AI:</strong> "If the user selected fitness, go to the workout screen. Otherwise go to the general setup screen." The AI will configure the conditions for you.</li>
+          <li style={listItemStyle}><strong>Configure manually:</strong> Select a button, set its action to <code style={inlineCodeStyle}>navigate</code>, and add conditions that check a variable's value to determine which screen to go to.</li>
+        </ul>
+      </div>
+
+      {/* Initial variables from code */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Passing Initial Variables from Your App
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          Sometimes you already know things about the user before onboarding starts — their name, their platform, whether they've used the app before, etc. You can pass these as <code style={inlineCodeStyle}>initialVariables</code> so your onboarding screens can use them immediately:
+        </Text>
+        <Card padding="sm">
+          <pre style={codeBlockStyle}>{`<OnboardingFlow
+  testKey="nb_test_..."
+  productionKey="nb_live_..."
+  initialVariables={{
+    userName: 'Sarah',        // Show their name in screens
+    isPremium: false,         // Customize flow for free users
+    platform: Platform.OS,    // Show platform-specific instructions
+  }}
+  onComplete={(userData) => {
+    // All variables (initial + collected) are in userData._variables
+    console.log(userData._variables);
+    // { userName: 'Sarah', isPremium: false, platform: 'ios', goal: 'fitness', ... }
+  }}
+/>`}</pre>
+        </Card>
         <Text variant="muted" size="sm" style={{ marginTop: theme.spacing.sm }}>
-          If the variable isn't set, the placeholder is left as-is.
+          These variables are immediately available to all screens in the flow. Screens can reference them with template syntax (e.g. {'{userName}'}) or use them in conditional navigation.
         </Text>
       </div>
 
       {/* Custom screen data flow */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Data Flow in Custom Screens
+          Variables in Custom Screens (Advanced)
         </Heading>
         <Text style={{ marginBottom: theme.spacing.sm }}>
-          Custom screens can read data from previous screens and pass data forward:
+          If you've built custom React Native screens (like a paywall or survey), those screens can both <strong>read</strong> existing variables and <strong>set new ones</strong>:
         </Text>
         <Card padding="sm">
           <pre style={codeBlockStyle}>{`function SurveyScreen({ data, onDataUpdate, onNext }: CustomScreenProps) {
-  // Read data from previous screens
+  // READ variables from previous screens
   const userName = data?.userName || 'there';
+  // data contains all variables set so far (initial + collected)
 
   const handleSubmit = () => {
-    // Pass data to subsequent screens
+    // SET new variables for the next screens to use
     onDataUpdate?.({
-      goal: selectedGoal,
-      experience: selectedLevel,
+      goal: selectedGoal,         // e.g. "fitness"
+      experienceLevel: selectedLevel, // e.g. "beginner"
     });
-    onNext();
+    onNext(); // move to the next screen
   };
 
-  // ... render survey UI
+  return (
+    <View>
+      <Text>Hey {userName}, what's your goal?</Text>
+      {/* ... render survey options ... */}
+    </View>
+  );
 }`}</pre>
         </Card>
-      </div>
-
-      {/* Conditional navigation */}
-      <div style={sectionGap}>
-        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          Conditional Navigation
-        </Heading>
-        <Text style={{ marginBottom: theme.spacing.sm }}>
-          In the dashboard builder, you can configure navigation actions to go to different screens based on variable values. For example:
-        </Text>
-        <ul style={{ marginLeft: theme.spacing.lg }}>
-          <li style={listItemStyle}>If <code style={inlineCodeStyle}>goal === "fitness"</code> → go to Fitness Setup screen</li>
-          <li style={listItemStyle}>If <code style={inlineCodeStyle}>goal === "nutrition"</code> → go to Nutrition Setup screen</li>
-          <li style={listItemStyle}>Default → go to next screen</li>
-        </ul>
         <Text variant="muted" size="sm" style={{ marginTop: theme.spacing.sm }}>
-          Conditional routes are configured per-button in the dashboard's screen builder using the navigate action type.
+          The <code style={inlineCodeStyle}>data</code> prop contains all variables collected so far (from <code style={inlineCodeStyle}>initialVariables</code> + any variables set by previous screens). Call <code style={inlineCodeStyle}>onDataUpdate()</code> to add new variables that subsequent screens and your <code style={inlineCodeStyle}>onComplete</code> callback will receive.
         </Text>
       </div>
 
-      {/* set_variable action */}
+      {/* Summary */}
       <div style={sectionGap}>
         <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
-          set_variable Action
+          Quick Reference
         </Heading>
-        <Text style={{ marginBottom: theme.spacing.sm }}>
-          SDK screens can set variables using the <code style={inlineCodeStyle}>set_variable</code> action type, configured in the dashboard. When a user taps a button with this action, the specified variable is set to the configured value.
-        </Text>
-        <Card padding="md" style={{ backgroundColor: theme.colors.background }}>
-          <Text size="sm">
-            Example: A "Select Plan" button can set <code style={inlineCodeStyle}>selectedPlan = "pro"</code>, which downstream screens or conditional navigation can reference.
-          </Text>
-        </Card>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>I want to...</th>
+                <th style={thStyle}>How</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['Save a user\'s button choice', 'Tell the AI: "When user taps X, save Y as Z" — or manually add a set_variable action'],
+                ['Show a variable in text', 'Use {variableName} in any text element'],
+                ['Branch to different screens', 'Tell the AI: "If X equals Y, go to screen Z" — or manually add conditions to a navigate action'],
+                ['Pass data from my app', 'Use the initialVariables prop on OnboardingFlow'],
+                ['Pass data from a custom screen', 'Call onDataUpdate({ key: value }) in your component'],
+                ['Read all collected data', 'Use the onComplete callback — userData._variables has everything'],
+              ].map(([want, how], i) => (
+                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : theme.colors.background }}>
+                  <td style={{ ...tdStyle, fontWeight: '600' }}>{want}</td>
+                  <td style={tdStyle}>{how}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
@@ -1538,7 +1699,7 @@ export function PaywallScreen({
               <pre style={{ ...codeBlockStyle, fontSize: theme.fontSizes.xs }}>Bearer c3373PFzv9wPpISOu5XFz22zABeLjpzYwGqmclXR60o=</pre>
             </Card>
           </li>
-          <li style={listItemStyle}>Select events: <strong>INITIAL_PURCHASE</strong>, <strong>RENEWAL</strong>, <strong>CANCELLATION</strong></li>
+          <li style={listItemStyle}>Select events: <strong>INITIAL_PURCHASE</strong>, <strong>TRIAL_STARTED</strong>, <strong>RENEWAL</strong>, <strong>CANCELLATION</strong></li>
           <li style={listItemStyle}>Click <strong>Save</strong> and send a test event</li>
         </ol>
       </div>
@@ -1742,9 +1903,8 @@ function SDKReferenceSection() {
             </thead>
             <tbody>
               {[
-                ['testKey', 'string', 'Yes*', 'API key for test environment (nb_test_...). Used when __DEV__ is true.'],
-                ['productionKey', 'string', 'Yes*', 'API key for production environment (nb_live_...). Used when __DEV__ is false.'],
-                ['apiKey', 'string', 'No', 'Legacy single API key. Deprecated — use testKey + productionKey instead.'],
+                ['testKey', 'string', 'Yes', 'API key for test environment (nb_test_...). Used when __DEV__ is true.'],
+                ['productionKey', 'string', 'Yes', 'API key for production environment (nb_live_...). Used when __DEV__ is false.'],
                 ['onComplete', '(data: Record<string, any>) => void', 'Yes', 'Called when the user completes the last screen. Receives all collected data.'],
                 ['onSkip', '() => void', 'No', 'Called when the user skips/dismisses the entire onboarding flow.'],
                 ['customComponents', 'Record<string, React.FC<CustomScreenProps>>', 'No', 'Map of custom screen components. Keys must match dashboard component names.'],
@@ -1762,9 +1922,6 @@ function SDKReferenceSection() {
             </tbody>
           </table>
         </div>
-        <Text variant="muted" size="sm" style={{ marginTop: theme.spacing.sm }}>
-          * Either <code style={inlineCodeStyle}>testKey + productionKey</code> (recommended) or <code style={inlineCodeStyle}>apiKey</code> must be provided.
-        </Text>
       </div>
 
       {/* CustomScreenProps */}

@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { theme } from '@/lib/theme'
 import { Button, Card, Heading, Text } from '@/components/ui'
+import { trackPricingPageViewed, trackPricingPlanSelected, trackCheckoutStarted } from '@/lib/mixpanel'
+import { createClient } from '@/lib/supabase/client'
 
 const SCALE_TIERS = [
   { credits: 700,  price: 100, priceId: 'price_1T4sP2I8BOMrgAxcCSNyeZlz' },
@@ -24,13 +26,40 @@ export default function PricingPage() {
 function PricingContent() {
   const [selectedScaleIndex, setSelectedScaleIndex] = useState(0)
   const [loading, setLoading] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const searchParams = useSearchParams()
   const checkoutCanceled = searchParams.get('checkout') === 'canceled'
+  const supabase = createClient()
 
   const selectedScale = SCALE_TIERS[selectedScaleIndex]
 
-  const handleCheckout = async (priceId: string) => {
+  // Track pricing page view
+  useEffect(() => {
+    trackPricingPageViewed('unknown', document.referrer)
+  }, [])
+
+  // Check if user is logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsLoggedIn(!!session)
+    }
+    checkAuth()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleCheckout = async (priceId: string, planName: string, credits: number, price: number) => {
     setLoading(priceId)
+
+    // Track plan selection
+    trackPricingPlanSelected(planName.toLowerCase(), credits, price)
+
     try {
       const response = await fetch('/api/stripe/checkout', {
         method: 'POST',
@@ -49,6 +78,9 @@ function PricingContent() {
         alert(data.error || 'Something went wrong')
         return
       }
+
+      // Track checkout started
+      trackCheckoutStarted(planName.toLowerCase(), price, credits)
 
       window.location.href = data.url
     } catch {
@@ -69,6 +101,7 @@ function PricingContent() {
       features: [
         '100 AI generation credits',
         '1.5% fee on user first transaction',
+        'A/B testing - 2 flows',
         'Basic analytics',
         'Standard support',
         'Email support',
@@ -84,9 +117,9 @@ function PricingContent() {
       features: [
         '300 AI generation credits',
         '1.25% fee on user first transaction',
+        'A/B testing - multiple flows',
         'Advanced analytics',
         'Priority support',
-        'A/B testing',
         'Custom branding',
       ],
     },
@@ -133,7 +166,7 @@ function PricingContent() {
         justifyContent: 'space-between',
         zIndex: 100,
       }}>
-        <a href="/landingpage" style={{ textDecoration: 'none' }}>
+        <a href="/" style={{ textDecoration: 'none' }}>
           <span style={{
             fontFamily: theme.fonts.serif,
             fontStyle: 'italic',
@@ -146,7 +179,7 @@ function PricingContent() {
         </a>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-          <a href="/landingpage#features" style={{
+          <a href="/#features" style={{
             textDecoration: 'none',
             fontSize: theme.fontSizes.sm,
             fontWeight: 500,
@@ -170,25 +203,42 @@ function PricingContent() {
           }}>
             Docs
           </a>
-          <a href="/login" style={{
-            textDecoration: 'none',
-            fontSize: theme.fontSizes.sm,
-            fontWeight: 500,
-            color: '#1a1a1a',
-          }}>
-            Log in
-          </a>
-          <a href="/signup" style={{
-            textDecoration: 'none',
-            fontSize: theme.fontSizes.sm,
-            fontWeight: 600,
-            color: '#fff',
-            backgroundColor: '#f26522',
-            padding: '8px 22px',
-            borderRadius: 10,
-          }}>
-            Sign up
-          </a>
+          {isLoggedIn ? (
+            <a href="/home" style={{
+              textDecoration: 'none',
+              fontSize: theme.fontSizes.sm,
+              fontWeight: 600,
+              color: '#fff',
+              backgroundColor: '#f26522',
+              padding: '8px 22px',
+              borderRadius: 10,
+              transition: 'opacity 0.15s',
+            }}>
+              Dashboard
+            </a>
+          ) : (
+            <>
+              <a href="/login" style={{
+                textDecoration: 'none',
+                fontSize: theme.fontSizes.sm,
+                fontWeight: 500,
+                color: '#1a1a1a',
+              }}>
+                Log in
+              </a>
+              <a href="/signup" style={{
+                textDecoration: 'none',
+                fontSize: theme.fontSizes.sm,
+                fontWeight: 600,
+                color: '#fff',
+                backgroundColor: '#f26522',
+                padding: '8px 22px',
+                borderRadius: 10,
+              }}>
+                Sign up
+              </a>
+            </>
+          )}
         </div>
       </nav>
 
@@ -308,10 +358,10 @@ function PricingContent() {
                 </div>
                 <div>
                   <Text size="sm" style={{ fontWeight: '600', color: theme.colors.primary }}>
-                    {tier.revenueFee}% Revenue Share
+                    {tier.revenueFee}% one-time transaction fee
                   </Text>
                   <Text variant="light" size="xs">
-                    On first transaction per user
+                    Only on first transaction for the user
                   </Text>
                 </div>
               </div>
@@ -339,7 +389,7 @@ function PricingContent() {
               {/* CTA Button */}
               <Button
                 variant={tier.popular ? 'primary' : 'secondary'}
-                onClick={() => handleCheckout(tier.priceId)}
+                onClick={() => handleCheckout(tier.priceId, tier.name, tier.credits, tier.price)}
                 disabled={loading === tier.priceId}
                 style={{
                   width: '100%',
@@ -398,7 +448,7 @@ function PricingContent() {
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {[
                   'Unlimited AI generations',
-                  'Custom revenue share rates',
+                  'Custom transaction fee rates',
                   'White-label solution',
                   'Dedicated account manager',
                   'Custom integrations',
@@ -461,12 +511,12 @@ function PricingContent() {
                 1 Credit = 1 Generation
               </Text>
               <Text variant="muted" size="sm">
-                Each AI screen generation or edit uses approximately 1 credit (10,000 input + 1,000 output tokens).
+                Each AI screen generation uses approximately 1 credit. Edits use even less (~0.1 credits each).
               </Text>
             </div>
             <div>
               <Text style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>
-                Revenue Sharing
+                One-time Transaction Fee
               </Text>
               <Text variant="muted" size="sm">
                 We charge a small percentage on each user's first transaction only. Not recurring. Lower rates for higher tiers.

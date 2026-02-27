@@ -88,6 +88,7 @@ interface ElementRendererProps {
   onDismiss?: () => void;
   variables?: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
+  assets?: Array<{ name: string; type: string; data: string }>;
 }
 
 export const ElementRenderer: React.FC<ElementRendererProps> = ({
@@ -98,11 +99,29 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   onDismiss,
   variables = {},
   onSetVariable,
+  assets = [],
 }) => {
   // Track toggled element IDs for toggle actions
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
   // Track selection groups: group name → selected element ID
   const [groupSelections, setGroupSelections] = useState<Record<string, string>>({});
+
+  // Helper function to resolve asset: URLs to actual data URLs
+  const resolveAssetUrl = (url: string): string => {
+    if (!url || !url.startsWith('asset:')) {
+      return url; // Return as-is if not an asset reference
+    }
+
+    const assetName = url.replace('asset:', '');
+    const asset = assets.find(a => a.name === assetName);
+
+    if (asset) {
+      return asset.data; // Return the base64 data URL
+    }
+
+    console.warn(`Asset not found: ${assetName}`);
+    return url; // Fallback to original URL
+  };
 
   const executeAction = useCallback(
     (action: ElementAction, element: ElementNode) => {
@@ -201,6 +220,8 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           groupSelections={groupSelections}
           onAction={handleAction}
           variables={variables}
+          onSetVariable={onSetVariable}
+          assets={assets}
         />
       ))}
     </>
@@ -216,9 +237,27 @@ interface RenderNodeProps {
   onAction: (element: ElementNode) => void;
   variables: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
+  assets: Array<{ name: string; type: string; data: string }>;
 }
 
-const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable }) => {
+const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, assets }) => {
+  // Helper function to resolve asset: URLs to actual data URLs
+  const resolveAssetUrl = (url: string): string => {
+    if (!url || !url.startsWith('asset:')) {
+      return url; // Return as-is if not an asset reference
+    }
+
+    const assetName = url.replace('asset:', '');
+    const asset = assets.find(a => a.name === assetName);
+
+    if (asset) {
+      return asset.data; // Return the base64 data URL
+    }
+
+    console.warn(`Asset not found: ${assetName}`);
+    return url; // Fallback to original URL
+  };
+
   // Variable-based conditions — hide element if condition is not met
   if (element.conditions?.show_if) {
     const shouldShow = evaluateCondition(element.conditions.show_if, variables);
@@ -272,7 +311,7 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     );
   };
 
-  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable };
+  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, assets };
 
   switch (element.type) {
     // ─── Containers ───
@@ -425,9 +464,10 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
     case 'image':
       if (element.props?.url) {
+        const resolvedUrl = resolveAssetUrl(element.props.url);
         return (
           <Image
-            source={{ uri: element.props.url }}
+            source={{ uri: resolvedUrl }}
             style={[style as ImageStyle, { resizeMode: 'cover' }]}
           />
         );

@@ -10,7 +10,6 @@ import { theme } from '@/lib/theme'
 import { useToast } from '@/components/Toast'
 
 const DEFAULT_METRICS = [
-  { id: 'screen_completion', label: 'Screen Completion', description: 'Percentage of users who complete each screen', default: true },
   { id: 'onboarding_completion', label: 'Onboarding Completion', description: 'Percentage of users who finish the entire flow', default: true },
   { id: 'paywall_conversion', label: 'Paywall Conversion', description: 'Percentage of users who convert on the paywall (tracked via RevenueCat webhooks)', default: true },
   { id: 'time_to_complete', label: 'Time to Complete', description: 'Average time to finish the onboarding', default: false },
@@ -32,6 +31,7 @@ export default function NewABTestPage() {
   const [flows, setFlows] = useState<OnboardingConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [subscriptionPlan, setSubscriptionPlan] = useState<string>('free')
 
   // Form state
   const [testName, setTestName] = useState('')
@@ -60,6 +60,7 @@ export default function NewABTestPage() {
 
     const org = userOrgs.organizations as any
     setOrgId(org.id)
+    setSubscriptionPlan(org.plan || 'free')
 
     const { data: configs } = await supabase
       .from('onboarding_configs')
@@ -73,6 +74,14 @@ export default function NewABTestPage() {
 
   const addVariant = (config: OnboardingConfig) => {
     if (variants.some(v => v.config_id === config.id)) return
+
+    // Enforce variant limits based on subscription plan
+    const variantLimit = (subscriptionPlan === 'free' || subscriptionPlan === 'starter') ? 2 : Infinity
+    if (variants.length >= variantLimit) {
+      toast(`Your ${subscriptionPlan} plan supports up to ${variantLimit} variants. Upgrade to add more.`, 'error')
+      setShowFlowPicker(false)
+      return
+    }
 
     const newVariant: VariantDraft = {
       id: `variant_${Date.now()}`,
@@ -247,12 +256,21 @@ export default function NewABTestPage() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.md }}>
               <Heading level={3} serif>Variants</Heading>
-              <Text variant="muted" size="sm">
-                Total: <span style={{
-                  fontWeight: '700',
-                  color: totalWeight === 100 ? theme.colors.successText : theme.colors.errorText,
-                }}>{totalWeight}%</span> / 100%
-              </Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
+                {(subscriptionPlan === 'free' || subscriptionPlan === 'starter') && (
+                  <Text variant="muted" size="sm">
+                    <span style={{ fontWeight: '700', color: variants.length >= 2 ? theme.colors.errorText : theme.colors.text }}>
+                      {variants.length}/2
+                    </span> variants
+                  </Text>
+                )}
+                <Text variant="muted" size="sm">
+                  Total: <span style={{
+                    fontWeight: '700',
+                    color: totalWeight === 100 ? theme.colors.successText : theme.colors.errorText,
+                  }}>{totalWeight}%</span> / 100%
+                </Text>
+              </div>
             </div>
 
             {variants.length === 0 && (

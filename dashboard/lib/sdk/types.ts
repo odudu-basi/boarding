@@ -14,6 +14,8 @@ export interface ScreenConfig {
   custom_component_name?: string;
   // Dashboard visibility control — if true, screen is hidden from onboarding flow
   hidden?: boolean;
+  // Screen transition animation (OTA updateable)
+  transition?: ScreenTransition;
 }
 
 // ─── Element Tree Types (matches dashboard primitives) ───
@@ -45,6 +47,54 @@ export interface ElementNode {
   actions?: ElementAction[];       // multi-action support (runs all in sequence)
   visibleWhen?: { group: string; hasSelection: boolean };
   conditions?: ElementConditions;  // variable-based show/hide
+  // Animation configurations (OTA updateable)
+  entrance?: EntranceAnimation;
+  interactive?: InteractiveAnimation;
+  textAnimation?: TextAnimation;
+}
+
+// ─── Animation Types (OTA Updateable) ───
+
+export type EntranceAnimationType = 'fadeIn' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight' | 'scaleIn' | 'none';
+export type InteractiveAnimationType = 'scale' | 'pulse' | 'shake' | 'bounce' | 'none';
+export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
+export type HapticFrequency = 'every' | 'every-2' | 'every-3' | 'every-5';
+
+export interface EntranceAnimation {
+  type: EntranceAnimationType;
+  duration?: number;      // milliseconds (default: 400)
+  delay?: number;         // delay before starting (default: 0)
+  stagger?: number;       // for lists: delay between each child (default: 0)
+  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring';
+}
+
+export interface InteractiveAnimation {
+  type: InteractiveAnimationType;
+  trigger?: 'tap' | 'load';  // when to trigger (default: 'tap')
+  duration?: number;         // milliseconds (default: 200)
+  intensity?: number;        // scale/shake intensity 0-1 (default: 0.95 for scale, 10 for shake)
+  repeat?: boolean;          // repeat continuously (default: false)
+  haptic?: boolean;          // trigger haptic on animation (default: false)
+  hapticType?: HapticType;   // type of haptic feedback
+}
+
+export interface TextAnimation {
+  type: 'typewriter' | 'none';
+  speed?: number;            // characters per second (default: 20)
+  delay?: number;            // delay before starting (default: 0)
+  cursor?: boolean;          // show blinking cursor (default: false)
+  haptic?: {
+    enabled: boolean;
+    type: HapticType;
+    frequency: HapticFrequency;
+  };
+}
+
+export interface ScreenTransition {
+  type: 'push' | 'modal' | 'fade' | 'slide' | 'none';
+  direction?: 'left' | 'right' | 'up' | 'down';
+  duration?: number;    // milliseconds (default: 300)
+  easing?: 'linear' | 'ease-in-out' | 'spring';
 }
 
 // ─── Condition & Variable Types ───
@@ -160,6 +210,7 @@ export interface ElementStyle {
 export interface OnboardingConfig {
   version: string;
   screens: ScreenConfig[];
+  assets?: Array<{ name: string; type: string; data: string }>;
 }
 
 // Experiment/A/B test variant

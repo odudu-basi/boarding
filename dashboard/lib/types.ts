@@ -47,6 +47,8 @@ export interface OnboardingConfig {
   name: string
   version: string
   is_published: boolean
+  environment?: 'test' | 'production'
+  last_published_at?: string | null
   config: {
     version: string
     screens: Screen[]

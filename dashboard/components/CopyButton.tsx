@@ -2,11 +2,17 @@
 
 import { useToast } from '@/components/Toast'
 
-export function CopyButton({ text }: { text: string }) {
+interface CopyButtonProps {
+  text: string
+  onCopy?: () => void
+}
+
+export function CopyButton({ text, onCopy }: CopyButtonProps) {
   const { toast } = useToast()
   const handleCopy = () => {
     navigator.clipboard.writeText(text)
     toast('Copied to clipboard', 'success')
+    if (onCopy) onCopy()
   }
 
   return (

@@ -34,7 +34,7 @@ interface LayoutProps {
 }
 
 const NAV_ITEMS: Array<{ label: string; href: string; icon: any; match?: (p: string) => boolean; external?: boolean }> = [
-  { label: 'Overview', href: '/', icon: HiOutlineHome, match: (p: string) => p === '/' },
+  { label: 'Overview', href: '/home', icon: HiOutlineHome, match: (p: string) => p === '/home' },
   { label: 'Onboarding Flows', href: '/flows', icon: HiOutlineRectangleStack, match: (p: string) => p.startsWith('/flows') },
   { label: 'A/B Tests', href: '/ab-tests', icon: HiOutlineBeaker, match: (p: string) => p.startsWith('/ab-tests') },
   { label: 'Analytics', href: '/analytics', icon: HiOutlineChartBar, match: (p: string) => p === '/analytics' },
@@ -207,7 +207,7 @@ export function Layout({ children, organizationName, plan, projects, currentProj
                 })}
                 <div style={{ borderTop: `1px solid ${theme.colors.border}` }}>
                   <Link
-                    href="/settings"
+                    href="/onboarding?mode=new-project"
                     onClick={() => setDropdownOpen(false)}
                     style={{
                       display: 'flex',

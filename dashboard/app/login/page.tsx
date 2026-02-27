@@ -5,6 +5,7 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { theme } from '@/lib/theme'
 import { Button, Heading, Text } from '@/components/ui'
+import { trackLoginCompleted, identifyUser } from '@/lib/mixpanel'
 
 export default function LoginPage() {
   return (
@@ -29,7 +30,7 @@ function LoginForm() {
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -37,7 +38,27 @@ function LoginForm() {
     if (error) {
       setError(error.message)
       setLoading(false)
-    } else {
+    } else if (data.user) {
+      // Track login and identify user
+      trackLoginCompleted(email)
+
+      // Fetch user's organization for identification
+      const { data: userData } = await supabase
+        .from('users')
+        .select('organization_id, organizations(*)')
+        .eq('auth_user_id', data.user.id)
+        .single()
+
+      if (userData?.organizations) {
+        const org = userData.organizations as any
+        identifyUser(data.user.id, {
+          email,
+          organization_id: org.id,
+          organization_name: org.name,
+          plan: org.plan,
+        })
+      }
+
       router.push(redirectTo)
       router.refresh()
     }

@@ -1,10 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { theme } from '@/lib/theme'
+import { createClient } from '@/lib/supabase/client'
 
 export default function LandingPage() {
   const [inputValue, setInputValue] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    // Check if user is logged in
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsLoggedIn(!!session)
+    }
+    checkAuth()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   return (
     <div style={{
@@ -71,26 +90,43 @@ export default function LandingPage() {
           }}>
             Docs
           </a>
-          <a href="/login" style={{
-            textDecoration: 'none',
-            fontSize: theme.fontSizes.sm,
-            fontWeight: 500,
-            color: '#1a1a1a',
-          }}>
-            Log in
-          </a>
-          <a href="/signup" style={{
-            textDecoration: 'none',
-            fontSize: theme.fontSizes.sm,
-            fontWeight: 600,
-            color: '#fff',
-            backgroundColor: '#f26522',
-            padding: '8px 22px',
-            borderRadius: 10,
-            transition: 'opacity 0.15s',
-          }}>
-            Sign up
-          </a>
+          {isLoggedIn ? (
+            <a href="/home" style={{
+              textDecoration: 'none',
+              fontSize: theme.fontSizes.sm,
+              fontWeight: 600,
+              color: '#fff',
+              backgroundColor: '#f26522',
+              padding: '8px 22px',
+              borderRadius: 10,
+              transition: 'opacity 0.15s',
+            }}>
+              Dashboard
+            </a>
+          ) : (
+            <>
+              <a href="/login" style={{
+                textDecoration: 'none',
+                fontSize: theme.fontSizes.sm,
+                fontWeight: 500,
+                color: '#1a1a1a',
+              }}>
+                Log in
+              </a>
+              <a href="/signup" style={{
+                textDecoration: 'none',
+                fontSize: theme.fontSizes.sm,
+                fontWeight: 600,
+                color: '#fff',
+                backgroundColor: '#f26522',
+                padding: '8px 22px',
+                borderRadius: 10,
+                transition: 'opacity 0.15s',
+              }}>
+                Sign up
+              </a>
+            </>
+          )}
         </div>
       </nav>
 
@@ -118,24 +154,6 @@ export default function LandingPage() {
           pointerEvents: 'none',
         }} />
 
-        {/* Pill badge */}
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '6px 16px',
-          borderRadius: 999,
-          backgroundColor: 'rgba(242,101,34,0.08)',
-          border: '1px solid rgba(242,101,34,0.15)',
-          marginBottom: 32,
-          fontSize: theme.fontSizes.xs,
-          fontWeight: 500,
-          color: '#f26522',
-          position: 'relative',
-        }}>
-          Server-driven onboarding for React Native
-        </div>
-
         {/* Main heading — mixed italic serif + straight sans */}
         <h1 style={{
           fontSize: 'clamp(2.5rem, 5vw, 4rem)',
@@ -150,8 +168,7 @@ export default function LandingPage() {
           <span style={{ fontFamily: theme.fonts.serif, fontStyle: 'italic', fontWeight: 400 }}>A/B test</span> your onboarding.{' '}
           <br />
           Ship changes{' '}
-          <span style={{ fontFamily: theme.fonts.serif, fontStyle: 'italic', fontWeight: 400 }}>without</span> an app
-          {' '}
+          <span style={{ fontFamily: theme.fonts.serif, fontStyle: 'italic', fontWeight: 400 }}>without</span> an app{' '}
           <span style={{ fontFamily: theme.fonts.serif, fontStyle: 'italic', fontWeight: 400 }}>review.</span>
         </h1>
 
@@ -166,61 +183,157 @@ export default function LandingPage() {
           Design onboarding flows in the dashboard, render them natively in your app, and iterate over the air — no app store review required.
         </p>
 
-        {/* Glassmorphic AI Input Box */}
+        {/* Tall Prompt Box */}
         <div style={{
           width: '100%',
           maxWidth: 680,
+          minHeight: 220,
           background: 'rgba(255, 255, 255, 0.6)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderRadius: 20,
-          padding: 8,
+          padding: '24px 28px',
           border: '1px solid rgba(0, 0, 0, 0.06)',
           boxShadow: '0 8px 40px rgba(0, 0, 0, 0.06)',
           position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
         }}>
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Ask Noboarding to create a prototype..."
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              fontSize: theme.fontSizes.base,
+              color: '#1a1a1a',
+              padding: 0,
+              fontFamily: theme.fonts.sans,
+            }}
+          />
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
+            gap: 10,
           }}>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask Noboarding to create a prototype..."
-              style={{
-                flex: 1,
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontSize: theme.fontSizes.base,
-                color: '#1a1a1a',
-                padding: '14px 18px',
-                fontFamily: theme.fonts.sans,
-              }}
-            />
-            <button style={{
-              padding: '12px 28px',
+            <a href="/signup" style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '8px 20px',
+              borderRadius: 9999,
+              backgroundColor: 'rgba(242,101,34,0.08)',
+              color: '#f26522',
               fontSize: theme.fontSizes.sm,
-              fontWeight: 600,
-              backgroundColor: '#f26522',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 14,
-              cursor: 'pointer',
-              fontFamily: theme.fonts.sans,
-              transition: 'opacity 0.15s',
-              whiteSpace: 'nowrap',
+              fontWeight: 500,
+              textDecoration: 'none',
+              border: '1px solid rgba(242,101,34,0.15)',
+              transition: 'background-color 0.15s',
             }}>
-              Generate
-            </button>
+              Figma to screen
+            </a>
+            <a href="/signup" style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '8px 20px',
+              borderRadius: 9999,
+              backgroundColor: 'rgba(242,101,34,0.08)',
+              color: '#f26522',
+              fontSize: theme.fontSizes.sm,
+              fontWeight: 500,
+              textDecoration: 'none',
+              border: '1px solid rgba(242,101,34,0.15)',
+              transition: 'background-color 0.15s',
+            }}>
+              A/B tests
+            </a>
           </div>
+
+          {/* Submit Arrow - shown when user types */}
+          {inputValue.trim() && (
+            <a
+              href="/signup"
+              style={{
+                position: 'absolute',
+                bottom: 24,
+                right: 24,
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                backgroundColor: '#f26522',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+                transition: 'all 0.2s',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(242, 101, 34, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)'
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(242, 101, 34, 0.4)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)'
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(242, 101, 34, 0.3)'
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M8 3L8 13M8 3L4 7M8 3L12 7"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          )}
         </div>
+
+        {/* Get Started Button */}
+        <a
+          href="/signup"
+          style={{
+            marginTop: 32,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '14px 32px',
+            backgroundColor: '#f26522',
+            color: '#fff',
+            fontSize: theme.fontSizes.base,
+            fontWeight: 600,
+            textDecoration: 'none',
+            borderRadius: 12,
+            transition: 'all 0.2s',
+            boxShadow: '0 4px 12px rgba(242, 101, 34, 0.25)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 6px 16px rgba(242, 101, 34, 0.35)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(242, 101, 34, 0.25)'
+          }}
+        >
+          Get Started for Free
+        </a>
 
         {/* Social proof */}
         <p style={{
-          marginTop: 24,
+          marginTop: 16,
           fontSize: theme.fontSizes.xs,
           color: '#999',
         }}>

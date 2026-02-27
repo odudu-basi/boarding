@@ -2,8 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { OnboardingWizard } from './OnboardingWizard'
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>
+}) {
   const supabase = await createClient()
+  const { mode } = await searchParams
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -17,13 +22,14 @@ export default async function OnboardingPage() {
   if (!userOrgs?.organizations) redirect('/login')
   const organization = userOrgs.organizations as any
 
-  // If onboarding is already complete, go to dashboard
-  if (organization.onboarding_completed) redirect('/')
+  // If onboarding is already complete, redirect — unless creating a new project
+  if (organization.onboarding_completed && mode !== 'new-project') redirect('/')
 
   return (
     <OnboardingWizard
       organizationId={organization.id}
       organizationName={organization.name}
+      mode={mode === 'new-project' ? 'new-project' : 'full'}
     />
   )
 }

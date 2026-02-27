@@ -1,10 +1,11 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { theme } from '@/lib/theme'
 import { Button, Heading, Text } from '@/components/ui'
+import { trackSignupStarted, trackSignupCompleted, identifyUser } from '@/lib/mixpanel'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -14,6 +15,11 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const router = useRouter()
   const supabase = createClient()
+
+  // Track when user lands on signup page
+  useEffect(() => {
+    trackSignupStarted(document.referrer)
+  }, [])
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,6 +67,16 @@ export default function SignupPage() {
         setLoading(false)
         return
       }
+
+      // Track signup completion and identify user
+      trackSignupCompleted(email, organizationName)
+      identifyUser(authData.user.id, {
+        email,
+        organization_id: orgData.id,
+        organization_name: organizationName,
+        plan: 'free',
+        signup_date: new Date().toISOString(),
+      })
 
       router.push('/onboarding')
       router.refresh()

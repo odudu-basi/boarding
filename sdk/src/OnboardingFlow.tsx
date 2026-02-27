@@ -74,6 +74,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [screens, setScreens] = useState<ScreenConfig[]>([]);
+  const [assets, setAssets] = useState<Array<{ name: string; type: string; data: string }>>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [collectedData, setCollectedData] = useState<Record<string, any>>({});
   const [variables, setVariables] = useState<Record<string, any>>(initialVariables || {});
@@ -148,6 +149,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
       // Store flow_id for analytics
       flowIdRef.current = configResponse.config_id;
+
+      // Store assets from config
+      if (configResponse.config.assets) {
+        setAssets(configResponse.config.assets);
+      }
 
       // Handle A/B test experiment assignment
       let screensToUse = configResponse.config.screens;
@@ -351,6 +357,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           onDismiss={onSkip ? handleSkipAll : handleNext}
           variables={allVariables}
           onSetVariable={handleSetVariable}
+          assets={assets}
         />
       </View>
     );

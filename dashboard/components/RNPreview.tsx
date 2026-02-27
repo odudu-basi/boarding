@@ -62,6 +62,7 @@ export function RNPreview({
         onDismiss={handleDismiss}
         variables={variables}
         onSetVariable={onSetVariable}
+        assets={assets}
       />
     </View>
   )

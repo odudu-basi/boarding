@@ -10,13 +10,19 @@ import { CopyButton } from '@/components/CopyButton'
 interface OnboardingWizardProps {
   organizationId: string
   organizationName: string
+  mode?: 'full' | 'new-project'
 }
 
-const STEPS = [
+const FULL_STEPS = [
   'Organization',
   'Project',
   'Team',
   'Referral',
+  'Get Started',
+]
+
+const NEW_PROJECT_STEPS = [
+  'Project',
   'Get Started',
 ]
 
@@ -51,38 +57,43 @@ const REFERRAL_SOURCES = [
   { value: 'other', label: 'Other' },
 ]
 
-export function OnboardingWizard({ organizationId, organizationName }: OnboardingWizardProps) {
+export function OnboardingWizard({ organizationId, organizationName, mode = 'full' }: OnboardingWizardProps) {
   const router = useRouter()
   const supabase = createClient()
+  const isNewProject = mode === 'new-project'
+  const STEPS = isNewProject ? NEW_PROJECT_STEPS : FULL_STEPS
 
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Step 1: Organization
+  // Step 1: Organization (full mode only)
   const [orgName, setOrgName] = useState(organizationName)
   const [companySize, setCompanySize] = useState('')
   const [userRole, setUserRole] = useState('')
 
-  // Step 2: Project
+  // Project
   const [appName, setAppName] = useState('')
   const [platform, setPlatform] = useState('cross_platform')
   const [bundleId, setBundleId] = useState('')
   const [createdProject, setCreatedProject] = useState<any>(null)
 
-  // Step 3: Team
+  // Team (full mode only)
   const [teamEmail, setTeamEmail] = useState('')
   const [teamEmails, setTeamEmails] = useState<string[]>([])
 
-  // Step 4: Referral
+  // Referral (full mode only)
   const [referralSource, setReferralSource] = useState('')
+
+  // Map step index to step name for easier logic
+  const currentStepName = STEPS[step]
 
   const handleNext = async () => {
     setError('')
     setLoading(true)
 
     try {
-      if (step === 0) {
+      if (currentStepName === 'Organization') {
         // Save organization details
         if (!orgName.trim()) {
           setError('Organization name is required')
@@ -103,8 +114,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           setLoading(false)
           return
         }
-        setStep(1)
-      } else if (step === 1) {
+        setStep(step + 1)
+      } else if (currentStepName === 'Project') {
         // Create project
         if (!appName.trim()) {
           setError('App name is required')
@@ -128,11 +139,11 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           return
         }
         setCreatedProject(project)
-        setStep(2)
-      } else if (step === 2) {
+        setStep(step + 1)
+      } else if (currentStepName === 'Team') {
         // Team step — just move on (emails collected for future use)
-        setStep(3)
-      } else if (step === 3) {
+        setStep(step + 1)
+      } else if (currentStepName === 'Referral') {
         // Save referral source
         if (referralSource) {
           await supabase
@@ -140,18 +151,20 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
             .update({ referral_source: referralSource })
             .eq('id', organizationId)
         }
-        setStep(4)
-      } else if (step === 4) {
-        // Complete onboarding
-        const { error: completeError } = await supabase
-          .from('organizations')
-          .update({ onboarding_completed: true })
-          .eq('id', organizationId)
+        setStep(step + 1)
+      } else if (currentStepName === 'Get Started') {
+        // Complete — set selected project cookie and go to dashboard
+        if (!isNewProject) {
+          const { error: completeError } = await supabase
+            .from('organizations')
+            .update({ onboarding_completed: true })
+            .eq('id', organizationId)
 
-        if (completeError) {
-          setError('Failed to complete setup: ' + completeError.message)
-          setLoading(false)
-          return
+          if (completeError) {
+            setError('Failed to complete setup: ' + completeError.message)
+            setLoading(false)
+            return
+          }
         }
 
         // Set selected project cookie
@@ -159,7 +172,7 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           document.cookie = `selected_project=${createdProject.id}; path=/; max-age=${60 * 60 * 24 * 365}`
         }
 
-        router.push('/')
+        router.push('/home')
         router.refresh()
         return
       }
@@ -177,8 +190,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
 
   const handleSkip = () => {
     setError('')
-    if (step === 2) setStep(3) // Skip team invite
-    else if (step === 3) setStep(4) // Skip referral
+    if (currentStepName === 'Team') setStep(step + 1)
+    else if (currentStepName === 'Referral') setStep(step + 1)
   }
 
   const addTeamEmail = () => {
@@ -288,8 +301,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
         maxWidth: 520,
         width: '100%',
       }}>
-        {/* ── Step 0: Organization ── */}
-        {step === 0 && (
+        {/* ── Step: Organization ── */}
+        {currentStepName === 'Organization' && (
           <>
             <Heading level={3} serif style={{ marginBottom: theme.spacing.xs }}>
               Tell us about your organization
@@ -343,11 +356,11 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           </>
         )}
 
-        {/* ── Step 1: Project ── */}
-        {step === 1 && (
+        {/* ── Step: Project ── */}
+        {currentStepName === 'Project' && (
           <>
             <Heading level={3} serif style={{ marginBottom: theme.spacing.xs }}>
-              Create your first project
+              {isNewProject ? 'Create a new project' : 'Create your first project'}
             </Heading>
             <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.lg }}>
               A project represents one app. You can create more later.
@@ -397,8 +410,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           </>
         )}
 
-        {/* ── Step 2: Team ── */}
-        {step === 2 && (
+        {/* ── Step: Team ── */}
+        {currentStepName === 'Team' && (
           <>
             <Heading level={3} serif style={{ marginBottom: theme.spacing.xs }}>
               Invite your team
@@ -465,8 +478,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           </>
         )}
 
-        {/* ── Step 3: Referral ── */}
-        {step === 3 && (
+        {/* ── Step: Referral ── */}
+        {currentStepName === 'Referral' && (
           <>
             <Heading level={3} serif style={{ marginBottom: theme.spacing.xs }}>
               How did you hear about us?
@@ -493,8 +506,8 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           </>
         )}
 
-        {/* ── Step 4: All Set ── */}
-        {step === 4 && createdProject && (
+        {/* ── Step: All Set ── */}
+        {currentStepName === 'Get Started' && createdProject && (
           <>
             <Heading level={3} serif style={{ marginBottom: theme.spacing.xs }}>
               You're all set!
@@ -606,7 +619,7 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           gap: theme.spacing.sm,
         }}>
           <div>
-            {step > 0 && step < 4 && (
+            {step > 0 && currentStepName !== 'Get Started' && (
               <Button variant="ghost" onClick={handleBack} disabled={loading}>
                 Back
               </Button>
@@ -614,7 +627,7 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
           </div>
 
           <div style={{ display: 'flex', gap: theme.spacing.sm }}>
-            {(step === 2 || step === 3) && (
+            {(currentStepName === 'Team' || currentStepName === 'Referral') && (
               <Button variant="ghost" onClick={handleSkip} disabled={loading}>
                 Skip
               </Button>
@@ -626,7 +639,7 @@ export function OnboardingWizard({ organizationId, organizationName }: Onboardin
             >
               {loading
                 ? 'Please wait...'
-                : step === 4
+                : currentStepName === 'Get Started'
                   ? 'Go to Dashboard'
                   : 'Continue'
               }

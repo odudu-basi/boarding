@@ -1,7 +1,7 @@
 -- Credit system for AI prompt usage tracking
--- Users get 100 credits for $15, with each credit allowing:
--- - 10,000 input tokens
--- - 1,000 output tokens
+-- Each credit allows:
+-- - 50,000 input tokens OR 5,000 output tokens
+-- (Updated from original 10,000/1,000 — see 20260227100000_update_credit_ratio.sql)
 
 -- User credits table
 CREATE TABLE IF NOT EXISTS user_credits (

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,17 @@ import {
   ViewStyle,
   TextStyle,
   ImageStyle,
+  Animated,
 } from 'react-native';
 import { ElementNode, ElementStyle, ElementAction, Analytics, ConditionalDestination, ConditionalRoutes } from '../types';
 import { resolveTemplate, evaluateCondition } from '../variableUtils';
+import {
+  createEntranceAnimationValues,
+  startEntranceAnimation,
+  startInteractiveAnimation,
+  triggerHaptic,
+  shouldTriggerHaptic,
+} from '../animationUtils';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialIcons, MaterialCommunityIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
 
@@ -35,6 +43,7 @@ interface ElementRendererProps {
   onDismiss?: () => void;
   variables?: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
+  assets?: Array<{ name: string; type: string; data: string }>;
 }
 
 export const ElementRenderer: React.FC<ElementRendererProps> = ({
@@ -45,6 +54,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   onDismiss,
   variables = {},
   onSetVariable,
+  assets = [],
 }) => {
   // Track toggled element IDs for toggle actions
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
@@ -52,6 +62,23 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   const [groupSelections, setGroupSelections] = useState<Record<string, string>>({});
   // Track text input values locally (uncontrolled)
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
+  // Helper function to resolve asset: URLs to actual data URLs
+  const resolveAssetUrl = (url: string): string => {
+    if (!url || !url.startsWith('asset:')) {
+      return url; // Return as-is if not an asset reference
+    }
+
+    const assetName = url.replace('asset:', '');
+    const asset = assets.find(a => a.name === assetName);
+
+    if (asset) {
+      return asset.data; // Return the base64 data URL
+    }
+
+    console.warn(`Asset not found: ${assetName}`);
+    return url; // Fallback to original URL
+  };
 
   const executeAction = useCallback(
     (action: ElementAction, element: ElementNode) => {
@@ -164,6 +191,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           variables={variables}
           inputValues={inputValues}
           setInputValues={setInputValues}
+          resolveAssetUrl={resolveAssetUrl}
         />
       ))}
     </>
@@ -181,14 +209,36 @@ interface RenderNodeProps {
   onSetVariable?: (name: string, value: any) => void;
   inputValues: Record<string, string>;
   setInputValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  staggerDelay?: number;  // For staggered entrance animations
+  resolveAssetUrl: (url: string) => string;  // Asset URL resolver
 }
 
-const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues }) => {
+const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, staggerDelay = 0, resolveAssetUrl }) => {
   // Variable-based conditions — hide element if condition is not met
   if (element.conditions?.show_if) {
     const shouldShow = evaluateCondition(element.conditions.show_if, variables);
     if (!shouldShow) return null;
   }
+
+  // ─── Animation State ───
+  const entranceValues = useRef(createEntranceAnimationValues()).current;
+  const interactiveValue = useRef(new Animated.Value(1)).current;
+  const [hasAnimated, setHasAnimated] = useState(false);
+
+  // Start entrance animation on mount
+  useEffect(() => {
+    if (element.entrance && element.entrance.type !== 'none' && !hasAnimated) {
+      startEntranceAnimation(element.entrance, entranceValues, staggerDelay);
+      setHasAnimated(true);
+    }
+  }, [element.entrance, hasAnimated, staggerDelay]);
+
+  // Start auto-triggered interactive animations
+  useEffect(() => {
+    if (element.interactive && element.interactive.trigger === 'load' && element.interactive.type !== 'none') {
+      startInteractiveAnimation(element.interactive, interactiveValue);
+    }
+  }, [element.interactive]);
 
   const style = convertStyle(element.style || {});
   const isToggled = toggledIds.has(element.id);
@@ -225,11 +275,19 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     if (style.width) wrapperStyle.width = style.width;
     if (style.alignSelf) wrapperStyle.alignSelf = style.alignSelf;
 
+    const handlePress = () => {
+      // Trigger interactive animation if configured
+      if (element.interactive && element.interactive.trigger === 'tap' && element.interactive.type !== 'none') {
+        startInteractiveAnimation(element.interactive, interactiveValue);
+      }
+      onAction(element);
+    };
+
     return (
       <TouchableOpacity
         key={element.id}
         activeOpacity={0.7}
-        onPress={() => onAction(element)}
+        onPress={handlePress}
         style={wrapperStyle}
       >
         {content}
@@ -237,39 +295,103 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     );
   };
 
-  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues };
+  // Wrapper for entrance animations
+  const wrapWithEntranceAnimation = (content: React.ReactElement): React.ReactElement => {
+    if (!element.entrance || element.entrance.type === 'none') {
+      return content;
+    }
+
+    // Build animated style based on entrance type
+    const animatedStyle: any = {
+      opacity: entranceValues.opacity,
+    };
+
+    // Apply scale for scale animations
+    if (element.entrance.type === 'scaleIn') {
+      animatedStyle.transform = [{ scale: entranceValues.scale }];
+    }
+    // Apply translate for slide animations
+    else if (element.entrance.type === 'slideUp' || element.entrance.type === 'slideDown') {
+      animatedStyle.transform = [{ translateY: entranceValues.translateY }];
+    }
+    else if (element.entrance.type === 'slideLeft' || element.entrance.type === 'slideRight') {
+      animatedStyle.transform = [{ translateX: entranceValues.translateX }];
+    }
+
+    return <Animated.View style={animatedStyle}>{content}</Animated.View>;
+  };
+
+  // Wrapper for interactive animations
+  const wrapWithInteractiveAnimation = (content: React.ReactElement): React.ReactElement => {
+    if (!element.interactive || element.interactive.type === 'none') {
+      return content;
+    }
+
+    const animatedStyle: any = {};
+
+    switch (element.interactive.type) {
+      case 'scale':
+      case 'pulse':
+        animatedStyle.transform = [{ scale: interactiveValue }];
+        break;
+      case 'shake':
+        animatedStyle.transform = [{ translateX: interactiveValue }];
+        break;
+      case 'bounce':
+        animatedStyle.transform = [{ translateY: interactiveValue }];
+        break;
+    }
+
+    return <Animated.View style={animatedStyle}>{content}</Animated.View>;
+  };
+
+  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, resolveAssetUrl };
 
   switch (element.type) {
     // ─── Containers ───
 
     case 'vstack': {
+      const stagger = element.entrance?.stagger || 0;
       const vstackContent = (
         <View style={[style, { flexDirection: 'column' }]}>
-          {element.children?.map((child) => (
-            <RenderNode key={child.id} element={child} {...childProps} />
+          {element.children?.map((child, index) => (
+            <RenderNode
+              key={child.id}
+              element={child}
+              {...childProps}
+              staggerDelay={stagger > 0 ? index * stagger : 0}
+            />
           ))}
         </View>
       );
-      return wrapWithAction(
+      const wrapped = wrapWithAction(
         element.style?.backgroundGradient
           ? wrapWithGradient(vstackContent, element.style, { ...style, flexDirection: 'column' })
           : vstackContent
       );
+      return wrapWithInteractiveAnimation(wrapWithEntranceAnimation(wrapped));
     }
 
     case 'hstack': {
+      const stagger = element.entrance?.stagger || 0;
       const hstackContent = (
         <View style={[style, { flexDirection: 'row' }]}>
-          {element.children?.map((child) => (
-            <RenderNode key={child.id} element={child} {...childProps} />
+          {element.children?.map((child, index) => (
+            <RenderNode
+              key={child.id}
+              element={child}
+              {...childProps}
+              staggerDelay={stagger > 0 ? index * stagger : 0}
+            />
           ))}
         </View>
       );
-      return wrapWithAction(
+      const wrapped = wrapWithAction(
         element.style?.backgroundGradient
           ? wrapWithGradient(hstackContent, element.style, { ...style, flexDirection: 'row' })
           : hstackContent
       );
+      return wrapWithInteractiveAnimation(wrapWithEntranceAnimation(wrapped));
     }
 
     case 'zstack': {
@@ -326,11 +448,75 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
     case 'text': {
       const resolvedText = resolveTemplate(element.props?.text || '', variables);
-      return (
+
+      // Typewriter animation support
+      const [displayedText, setDisplayedText] = useState('');
+      const [showCursor, setShowCursor] = useState(false);
+      const typewriterInterval = useRef<NodeJS.Timeout | null>(null);
+
+      useEffect(() => {
+        const textAnim = element.textAnimation;
+
+        if (textAnim && textAnim.type === 'typewriter') {
+          const speed = textAnim.speed || 20; // chars per second
+          const delay = textAnim.delay || 0;
+          const haptic = textAnim.haptic;
+          let currentIndex = 0;
+
+          // Show cursor if enabled
+          if (textAnim.cursor) {
+            setShowCursor(true);
+          }
+
+          // Start typewriter animation after delay
+          const timeoutId = setTimeout(() => {
+            typewriterInterval.current = setInterval(() => {
+              if (currentIndex >= resolvedText.length) {
+                if (typewriterInterval.current) {
+                  clearInterval(typewriterInterval.current);
+                }
+                // Hide cursor when done
+                if (textAnim.cursor) {
+                  setShowCursor(false);
+                }
+                return;
+              }
+
+              setDisplayedText(resolvedText.substring(0, currentIndex + 1));
+
+              // Trigger haptic if enabled
+              if (haptic && haptic.enabled && shouldTriggerHaptic(currentIndex, haptic.frequency)) {
+                triggerHaptic(haptic.type);
+              }
+
+              currentIndex++;
+            }, 1000 / speed);
+          }, delay);
+
+          return () => {
+            clearTimeout(timeoutId);
+            if (typewriterInterval.current) {
+              clearInterval(typewriterInterval.current);
+            }
+          };
+        } else {
+          // No typewriter - show full text immediately
+          setDisplayedText(resolvedText);
+        }
+      }, [resolvedText, element.textAnimation]);
+
+      const textContent = element.textAnimation?.type === 'typewriter' ? displayedText : resolvedText;
+
+      const textElement = (
         <Text style={style as TextStyle}>
-          {resolvedText}
+          {textContent}
+          {showCursor && (
+            <Text style={{ opacity: 0.5 }}>|</Text>
+          )}
         </Text>
       );
+
+      return wrapWithInteractiveAnimation(wrapWithEntranceAnimation(wrapWithAction(textElement)));
     }
 
     case 'icon': {
@@ -376,9 +562,10 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
     case 'image':
       if (element.props?.url) {
+        const resolvedUrl = resolveAssetUrl(element.props.url);
         return (
           <Image
-            source={{ uri: element.props.url }}
+            source={{ uri: resolvedUrl }}
             style={[style as ImageStyle, { resizeMode: 'cover' }]}
           />
         );
@@ -406,6 +593,11 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
     case 'video':
       // Video placeholder — actual implementation would use expo-av or react-native-video
+      // Resolve asset URL if present (for future implementation)
+      if (element.props?.url) {
+        const resolvedUrl = resolveAssetUrl(element.props.url);
+        // TODO: Implement actual video player with resolvedUrl
+      }
       return (
         <View
           style={[
@@ -428,6 +620,11 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
 
     case 'lottie':
       // Lottie placeholder — actual implementation would use lottie-react-native
+      // Resolve asset URL if present (for future implementation)
+      if (element.props?.url) {
+        const resolvedUrl = resolveAssetUrl(element.props.url);
+        // TODO: Implement actual Lottie player with resolvedUrl
+      }
       return (
         <View
           style={[
