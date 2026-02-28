@@ -98,6 +98,9 @@ export interface Element {
   actions?: ElementAction[]       // multi-action support (runs all in sequence)
   visibleWhen?: { group: string; hasSelection: boolean }
   conditions?: ElementConditions  // variable-based show/hide
+  entrance?: Record<string, any>       // entrance animation config
+  textAnimation?: Record<string, any>  // typewriter text animation config
+  interactive?: Record<string, any>    // interactive animation config
 }
 
 export type ElementType =

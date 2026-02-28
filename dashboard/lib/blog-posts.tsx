@@ -78,10 +78,7 @@ export const blogPosts: BlogPost[] = [
 
         <h2 style={articleStyles.h2}>What actually moves conversion</h2>
         <p style={articleStyles.paragraph}>
-          After working with dozens of mobile apps across different categories, the patterns are clear. The apps that convert well do three things differently in their onboarding:
-        </p>
-        <p style={articleStyles.paragraph}>
-          <span style={articleStyles.bold}>They get to value fast.</span> Every screen in your onboarding that does not directly help the user understand why they should care is a screen where you lose people. If your app is a habit tracker, let them create their first habit in the onboarding. If your app is a photo editor, let them edit a photo. Do not make them sit through five slides of marketing copy before they can do anything.
+          With our experience in mobile apps across different categories, the patterns are clear. The apps that convert well do two things differently in their onboarding:
         </p>
         <p style={articleStyles.paragraph}>
           <span style={articleStyles.bold}>They personalize early.</span> When you ask users a couple of questions at the start ("What is your goal?" or "How experienced are you?"), two things happen. First, the user feels like the app is being tailored to them, which builds investment. Second, you now have data you can use to customize their experience going forward. Both of these increase the odds they stick around.
