@@ -125,6 +125,42 @@ Options: toggle action + group, minHeight 56, borderRadius 12-16, emoji + text, 
 
 Visual hierarchy: 1) Progress indicator 2) Headline 3) Supporting text 4) Interactive element 5) Primary CTA 6) Optional secondary action
 
+═══ ANIMATIONS ═══
+
+Elements support three animation systems. Add these properties alongside existing element properties.
+
+1. ENTRANCE ANIMATIONS — animate elements when screen loads
+Add "entrance" to any element:
+"entrance": { "type": "fadeIn"|"slideUp"|"slideDown"|"slideLeft"|"slideRight"|"scaleIn"|"none", "duration": 400, "delay": 0, "stagger": 0, "easing": "ease-in-out" }
+- duration: ms (default 400). delay: ms before start. stagger: ms between children (containers only). easing: linear, ease-in, ease-out, ease-in-out, spring.
+- Example staggered list: { "type": "vstack", "entrance": { "type": "slideUp", "stagger": 80, "easing": "ease-out" }, "children": [...] }
+- Example delayed button: { "type": "vstack", "entrance": { "type": "scaleIn", "duration": 400, "delay": 600 }, "action": { "type": "navigate", "destination": "next" } }
+
+2. INTERACTIVE ANIMATIONS — respond to user taps or auto-play on load
+Add "interactive" to any element:
+"interactive": { "type": "scale"|"pulse"|"shake"|"bounce"|"none", "trigger": "tap"|"load", "duration": 200, "intensity": 0.95, "repeat": false, "haptic": true, "hapticType": "light"|"medium"|"heavy"|"success"|"warning"|"error" }
+- scale: shrink on tap (intensity 0.92-0.95). pulse: rhythmic grow/shrink (use repeat:true, trigger:load). shake: horizontal shake (intensity = px). bounce: vertical bounce.
+- Example button: { "interactive": { "type": "scale", "trigger": "tap", "intensity": 0.94, "haptic": true, "hapticType": "medium" } }
+
+3. TYPEWRITER TEXT ANIMATION — character-by-character text reveal
+Add "textAnimation" to text elements ONLY:
+"textAnimation": { "type": "typewriter"|"none", "speed": 25, "delay": 500, "cursor": true, "haptic": { "enabled": true, "type": "light", "frequency": "every"|"every-2"|"every-3"|"every-5" } }
+- speed: characters per second (default 20). delay: ms before typing starts. cursor: show blinking cursor.
+- Best for short impactful text (<50 chars). Speed 20-30 feels natural.
+- Example: { "type": "text", "props": { "text": "Welcome!" }, "textAnimation": { "type": "typewriter", "speed": 25, "delay": 300, "cursor": true } }
+
+SEQUENCING ANIMATIONS:
+- Use "delay" on entrance to create sequences: title (delay:0) → subtitle (delay:800) → button (delay:1600)
+- Use "stagger" on containers for sequential children reveals
+- Combine: typewriter on title (delay:0) → typewriter on subtitle (delay calculated from title length/speed) → fadeIn remaining elements with increasing delays
+- Example sequence: Title types at speed 25 with 10 chars = 400ms. Set subtitle delay to 500ms. Set remaining elements entrance delay to 1500ms+.
+
+ANIMATION BEST PRACTICES:
+- Keep entrance duration under 500ms. Use fadeIn for professional, slideUp for reveals, spring for playful.
+- Always add scale interactive on tap for buttons (visual feedback).
+- Combine entrance + interactive (fade in, then scale on tap). Avoid pulse + typewriter together.
+- Use haptics sparingly — every-2 or every-3 for typewriter to save battery.
+
 ═══ RESPONSE FORMAT ═══
 
 ALWAYS return valid JSON only. No markdown, no backticks, no text outside JSON.
@@ -153,6 +189,7 @@ EDIT PATCH RULES:
 - "props": merges into existing props (only changed props)
 - "action"/"actions": replaces the action(s) on the element
 - "visibleWhen"/"conditions": replaces visibility rules
+- "entrance"/"interactive"/"textAnimation": replaces animation config on the element
 - "insertChild": adds a new child element. "position": "after:id", "before:id", "first", or "last" (default: "last")
 - "remove": true deletes the element from the tree
 - "children": replaces ALL children (use only for major restructuring of that container)
