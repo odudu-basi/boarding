@@ -8,6 +8,7 @@ if (typeof window !== 'undefined') {
     debug: process.env.NODE_ENV === 'development',
     track_pageview: false, // We'll manually track page views
     persistence: 'localStorage',
+    record_sessions_percent: 100,
   })
 }
 

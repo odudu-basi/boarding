@@ -19,7 +19,7 @@ const BASE_URL = "https://www.noboarding.co";
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: "Noboarding — Server-Driven Onboarding for React Native",
+    default: "Noboarding — Update Your App Onboarding Without App Review",
     template: "%s | Noboarding",
   },
   description:
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: BASE_URL,
     siteName: "Noboarding",
-    title: "Noboarding — Server-Driven Onboarding for React Native",
+    title: "Noboarding — Update Your App Onboarding Without App Review",
     description:
       "Build, A/B test, and update React Native onboarding flows over the air — no app review required.",
     images: [
@@ -51,13 +51,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Noboarding — Server-Driven Onboarding for React Native",
+        alt: "Noboarding — Update Your App Onboarding Without App Review",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Noboarding — Server-Driven Onboarding for React Native",
+    title: "Noboarding — Update Your App Onboarding Without App Review",
     description:
       "Build, A/B test, and update React Native onboarding flows over the air — no app review required.",
     images: ["/og-image.png"],

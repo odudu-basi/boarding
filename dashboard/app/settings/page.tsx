@@ -18,8 +18,8 @@ export default async function SettingsPage() {
     .eq('organization_id', organization.id)
     .single()
 
-  const testApiKey = currentProject?.test_api_key || organization.test_api_key
-  const productionApiKey = currentProject?.production_api_key || organization.production_api_key
+  const testApiKey = currentProject?.test_api_key
+  const productionApiKey = currentProject?.production_api_key
 
   return (
     <Layout

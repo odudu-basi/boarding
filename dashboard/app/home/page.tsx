@@ -37,9 +37,9 @@ export default async function Home() {
     ?.filter((e: any) => e.event_type === 'INITIAL_PURCHASE' && e.price)
     .reduce((sum: number, e: any) => sum + parseFloat(e.price), 0) || 0
 
-  // Use project API keys if available, fall back to org keys
-  const testApiKey = currentProject?.test_api_key || organization.test_api_key
-  const productionApiKey = currentProject?.production_api_key || organization.production_api_key
+  // Use project API keys
+  const testApiKey = currentProject?.test_api_key
+  const productionApiKey = currentProject?.production_api_key
 
   return (
     <Layout

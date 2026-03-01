@@ -1,11 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
-
-function generateApiKey(prefix: string) {
-  return `${prefix}_${randomBytes(24).toString('hex')}`
-}
 
 export async function POST(request: Request) {
   try {
@@ -35,8 +30,6 @@ export async function POST(request: Request) {
         name: organizationName,
         plan: 'free',
         credits: 5,
-        test_api_key: generateApiKey('nbd_test'),
-        production_api_key: generateApiKey('nbd_live'),
       })
       .select()
       .single()

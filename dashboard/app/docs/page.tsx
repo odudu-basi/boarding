@@ -56,8 +56,8 @@ export default async function DocsPage() {
       const currentProject = (projects && projects.length > 0) ? projects[0] : null
 
       // Use real API keys if authenticated
-      testApiKey = currentProject?.test_api_key || organization.test_api_key || testApiKey
-      productionApiKey = currentProject?.production_api_key || organization.production_api_key || productionApiKey
+      testApiKey = currentProject?.test_api_key || testApiKey
+      productionApiKey = currentProject?.production_api_key || productionApiKey
 
       // Fetch all onboarding configs to extract custom screens
       const configsQuery = supabase
