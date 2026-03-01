@@ -5,10 +5,16 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
+  const redirectTo = requestUrl.searchParams.get('redirect') || '/home'
 
   if (code) {
     const supabase = await createClient()
-    await supabase.auth.exchangeCodeForSession(code)
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (exchangeError) {
+      // If code exchange fails, send to login
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -21,20 +27,25 @@ export async function GET(request: Request) {
 
       const { data: userData } = await adminSupabase
         .from('users')
-        .select('organization_id')
+        .select('organization_id, organizations(onboarding_completed)')
         .eq('auth_user_id', user.id)
         .single()
 
-      // Existing user with organization — go straight to dashboard
+      // Existing user with organization
       if (userData?.organization_id) {
-        return NextResponse.redirect(new URL('/home', request.url))
+        const org = userData.organizations as any
+        // If onboarding is done, go to dashboard; otherwise go to onboarding
+        if (org?.onboarding_completed) {
+          return NextResponse.redirect(new URL(redirectTo, request.url))
+        }
+        return NextResponse.redirect(new URL('/onboarding', request.url))
       }
 
       // New Google OAuth user — create organization and user row
       if (!userData) {
         const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'My Organization'
 
-        const { data: orgData } = await adminSupabase
+        const { data: orgData, error: orgError } = await adminSupabase
           .from('organizations')
           .insert({
             name: `${displayName}'s Organization`,
@@ -50,11 +61,17 @@ export async function GET(request: Request) {
             organization_id: orgData.id,
             role: 'owner',
           })
+          // New user — go to onboarding
+          return NextResponse.redirect(new URL('/onboarding', request.url))
         }
+
+        // If org creation failed, log and redirect to login
+        console.error('Failed to create organization:', orgError?.message)
+        return NextResponse.redirect(new URL('/login', request.url))
       }
     }
   }
 
-  // Redirect to onboarding to complete setup (project creation, etc.)
-  return NextResponse.redirect(new URL('/onboarding', request.url))
+  // Fallback — no code or no user
+  return NextResponse.redirect(new URL('/login', request.url))
 }
