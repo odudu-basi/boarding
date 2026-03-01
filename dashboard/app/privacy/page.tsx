@@ -169,7 +169,7 @@ export default function PrivacyPage() {
           <li style={listItem}>Withdraw consent at any time</li>
         </ul>
         <p style={paragraph}>
-          To exercise any of these rights, contact us at <a href="mailto:support@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>support@noboarding.co</a>.
+          To exercise any of these rights, contact us at <a href="mailto:app@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>app@noboarding.co</a>.
         </p>
 
         <h2 style={sectionTitle}>9. Children's Privacy</h2>
@@ -193,7 +193,7 @@ export default function PrivacyPage() {
         </p>
         <p style={paragraph}>
           Odanta LLC<br />
-          Email: <a href="mailto:support@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>support@noboarding.co</a>
+          Email: <a href="mailto:app@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>app@noboarding.co</a>
         </p>
       </div>
 

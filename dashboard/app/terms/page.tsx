@@ -172,7 +172,7 @@ export default function TermsPage() {
 
         <h2 style={sectionTitle}>14. Contact</h2>
         <p style={paragraph}>
-          If you have any questions about these Terms, please contact us at <a href="mailto:support@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>support@noboarding.co</a>.
+          If you have any questions about these Terms, please contact us at <a href="mailto:app@noboarding.co" style={{ color: '#f26522', textDecoration: 'none' }}>app@noboarding.co</a>.
         </p>
       </div>
 
