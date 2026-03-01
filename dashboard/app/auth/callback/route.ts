@@ -34,10 +34,11 @@ export async function GET(request: Request) {
       // Existing user with organization
       if (userData?.organization_id) {
         const org = userData.organizations as any
-        // If onboarding is done, go to dashboard; otherwise go to onboarding
+        // If onboarding is done, always go to dashboard
         if (org?.onboarding_completed) {
-          return NextResponse.redirect(new URL(redirectTo, request.url))
+          return NextResponse.redirect(new URL('/home', request.url))
         }
+        // Onboarding not finished — send them back to complete it
         return NextResponse.redirect(new URL('/onboarding', request.url))
       }
 
