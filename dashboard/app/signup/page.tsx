@@ -53,32 +53,20 @@ export default function SignupPage() {
     }
 
     if (authData.user) {
-      // Create organization with 5 free credits
-      const { data: orgData, error: orgError} = await supabase
-        .from('organizations')
-        .insert({
-          name: organizationName,
-          plan: 'free',
-          credits: 5,
-        })
-        .select()
-        .single()
-
-      if (orgError) {
-        setError('Failed to create organization: ' + orgError.message)
-        setLoading(false)
-        return
-      }
-
-      // Link user to organization
-      const { error: userError } = await supabase.from('users').insert({
-        auth_user_id: authData.user.id,
-        organization_id: orgData.id,
-        role: 'owner',
+      // Create organization and user row via API (uses service role to bypass RLS)
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authUserId: authData.user.id,
+          organizationName,
+        }),
       })
 
-      if (userError) {
-        setError('Failed to link user: ' + userError.message)
+      const result = await res.json()
+
+      if (!res.ok) {
+        setError(result.error || 'Failed to create account')
         setLoading(false)
         return
       }
@@ -87,7 +75,7 @@ export default function SignupPage() {
       trackSignupCompleted(email, organizationName)
       identifyUser(authData.user.id, {
         email,
-        organization_id: orgData.id,
+        organization_id: result.organizationId,
         organization_name: organizationName,
         plan: 'free',
         signup_date: new Date().toISOString(),

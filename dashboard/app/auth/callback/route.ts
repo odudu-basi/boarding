@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -12,7 +13,13 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (user) {
-      const { data: userData } = await supabase
+      // Use service role client to bypass RLS for checking/creating user data
+      const adminSupabase = createServiceClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+
+      const { data: userData } = await adminSupabase
         .from('users')
         .select('organization_id')
         .eq('auth_user_id', user.id)
@@ -23,13 +30,11 @@ export async function GET(request: Request) {
         return NextResponse.redirect(new URL('/home', request.url))
       }
 
-      // New Google OAuth user — no users row exists yet
-      // Create organization and user row so they don't get stuck in a redirect loop
+      // New Google OAuth user — create organization and user row
       if (!userData) {
         const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'My Organization'
 
-        // Create organization with 5 free credits
-        const { data: orgData } = await supabase
+        const { data: orgData } = await adminSupabase
           .from('organizations')
           .insert({
             name: `${displayName}'s Organization`,
@@ -40,8 +45,7 @@ export async function GET(request: Request) {
           .single()
 
         if (orgData) {
-          // Link user to organization
-          await supabase.from('users').insert({
+          await adminSupabase.from('users').insert({
             auth_user_id: user.id,
             organization_id: orgData.id,
             role: 'owner',
