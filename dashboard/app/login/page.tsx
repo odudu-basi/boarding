@@ -90,12 +90,12 @@ function LoginForm() {
           overflow: 'hidden',
         }}
       >
-        <div style={{ position: 'relative', width: '50%', maxWidth: '400px', aspectRatio: '1' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <Image
             src="/favicon.png"
             alt="Noboarding"
             fill
-            style={{ objectFit: 'contain' }}
+            style={{ objectFit: 'cover' }}
             priority
           />
         </div>
