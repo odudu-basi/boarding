@@ -1,6 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
+
+function generateApiKey(prefix: string) {
+  return `${prefix}_${randomBytes(24).toString('hex')}`
+}
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
@@ -40,6 +45,8 @@ export async function GET(request: Request) {
             name: `${displayName}'s Organization`,
             plan: 'free',
             credits: 5,
+            test_api_key: generateApiKey('nbd_test'),
+            production_api_key: generateApiKey('nbd_live'),
           })
           .select()
           .single()

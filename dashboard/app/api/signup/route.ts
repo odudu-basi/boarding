@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
+
+function generateApiKey(prefix: string) {
+  return `${prefix}_${randomBytes(24).toString('hex')}`
+}
 
 export async function POST(request: Request) {
   try {
@@ -7,6 +13,13 @@ export async function POST(request: Request) {
 
     if (!authUserId || !organizationName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Verify the caller is actually this auth user (prevent spoofing)
+    const serverSupabase = await createServerClient()
+    const { data: { user } } = await serverSupabase.auth.getUser()
+    if (!user || user.id !== authUserId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Use service role client to bypass RLS
@@ -22,6 +35,8 @@ export async function POST(request: Request) {
         name: organizationName,
         plan: 'free',
         credits: 5,
+        test_api_key: generateApiKey('nbd_test'),
+        production_api_key: generateApiKey('nbd_live'),
       })
       .select()
       .single()
