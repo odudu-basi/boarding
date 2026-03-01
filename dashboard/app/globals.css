@@ -67,3 +67,27 @@ body {
   font-family: 'Newsreader', serif;
   font-style: italic;
 }
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  /* Stack grids to single column on mobile */
+  div[style*="grid-template-columns"],
+  div[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Remove column spans on mobile */
+  div[style*="grid-column"] {
+    grid-column: span 1 !important;
+  }
+  /* Reduce section padding */
+  section {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  /* Stack footers vertically */
+  footer {
+    flex-direction: column !important;
+    gap: 16px;
+    text-align: center;
+  }
+}

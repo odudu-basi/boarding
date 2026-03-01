@@ -769,10 +769,20 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* ── Placeholder styling ── */}
+      {/* ── Placeholder styling + Mobile ── */}
       <style jsx>{`
         input::placeholder {
           color: #999;
+        }
+        @media (max-width: 768px) {
+          nav { padding: 10px 16px !important; }
+          nav > div:last-child { gap: 12px !important; }
+          nav > div:last-child a { font-size: 13px !important; }
+        }
+        @media (max-width: 600px) {
+          nav > div:last-child a:not([href="/signup"]):not([href="/login"]):not([href="/home"]) {
+            display: none;
+          }
         }
       `}</style>
     </div>

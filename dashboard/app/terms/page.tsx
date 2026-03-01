@@ -202,6 +202,16 @@ export default function TermsPage() {
           <Link href="/privacy" style={{ textDecoration: 'none', fontSize: theme.fontSizes.sm, color: '#666' }}>Privacy</Link>
         </div>
       </footer>
+
+      <style>{`
+        @media (max-width: 600px) {
+          nav { padding: 10px 16px !important; gap: 8px; }
+          nav a { font-size: 13px !important; }
+          nav > div { gap: 16px !important; }
+          footer { flex-direction: column !important; gap: 16px; text-align: center; }
+          footer > div { gap: 16px !important; }
+        }
+      `}</style>
     </div>
   )
 }
