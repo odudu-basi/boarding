@@ -27,6 +27,7 @@ function PricingContent() {
   const [selectedScaleIndex, setSelectedScaleIndex] = useState(0)
   const [loading, setLoading] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [revenueCatEnabled, setRevenueCatEnabled] = useState(false)
   const searchParams = useSearchParams()
   const checkoutCanceled = searchParams.get('checkout') === 'canceled'
   const supabase = createClient()
@@ -100,7 +101,7 @@ function PricingContent() {
       popular: false,
       features: [
         '100 AI generation credits',
-        '1.5% fee on user first transaction',
+        ...(revenueCatEnabled ? ['1.5% fee on user first transaction'] : []),
         'A/B testing - 2 flows',
         'Basic analytics',
         'Standard support',
@@ -112,11 +113,11 @@ function PricingContent() {
       priceId: 'price_1T5MfOKHtI6VLNHOQtPzywEO',
       price: 50,
       credits: 300,
-      revenueFee: 1.25,
+      revenueFee: 1,
       popular: true,
       features: [
         '300 AI generation credits',
-        '1.25% fee on user first transaction',
+        ...(revenueCatEnabled ? ['1% fee on user first transaction'] : []),
         'A/B testing - multiple flows',
         'Advanced analytics',
         'Priority support',
@@ -133,7 +134,7 @@ function PricingContent() {
       variable: true,
       features: [
         `${selectedScale.credits} AI generation credits`,
-        '0.75% fee on user first transaction',
+        ...(revenueCatEnabled ? ['0.75% fee on user first transaction'] : []),
         'Advanced analytics',
         'Dedicated support',
         'A/B testing',
@@ -258,7 +259,50 @@ function PricingContent() {
             Simple, transparent pricing
           </Heading>
           <Text variant="muted" size="lg">
-            Monthly subscription for credits. Small one-time fee on each user's first transaction.
+            Monthly subscription for credits.
+          </Text>
+        </div>
+
+        {/* RevenueCat Toggle */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          marginBottom: theme.spacing.xl,
+        }}>
+          <Text size="sm" style={{ fontWeight: '500', color: revenueCatEnabled ? theme.colors.textMuted : theme.colors.text }}>
+            Without RevenueCat
+          </Text>
+          <button
+            onClick={() => setRevenueCatEnabled(!revenueCatEnabled)}
+            style={{
+              position: 'relative',
+              width: 48,
+              height: 26,
+              borderRadius: 13,
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: revenueCatEnabled ? theme.colors.primary : '#ccc',
+              transition: 'background-color 0.2s',
+              padding: 0,
+              flexShrink: 0,
+            }}
+          >
+            <span style={{
+              position: 'absolute',
+              top: 3,
+              left: revenueCatEnabled ? 25 : 3,
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              backgroundColor: '#fff',
+              transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </button>
+          <Text size="sm" style={{ fontWeight: '500', color: revenueCatEnabled ? theme.colors.text : theme.colors.textMuted }}>
+            RevenueCat Tracking
           </Text>
         </div>
 
@@ -364,14 +408,16 @@ function PricingContent() {
                     ~{tier.credits} AI screen generations
                   </Text>
                 </div>
-                <div>
-                  <Text size="sm" style={{ fontWeight: '600', color: theme.colors.primary }}>
-                    {tier.revenueFee}% one-time transaction fee
-                  </Text>
-                  <Text variant="light" size="xs">
-                    Only on first transaction for the user
-                  </Text>
-                </div>
+                {revenueCatEnabled && (
+                  <div>
+                    <Text size="sm" style={{ fontWeight: '600', color: theme.colors.primary }}>
+                      {tier.revenueFee}% one-time transaction fee
+                    </Text>
+                    <Text variant="light" size="xs">
+                      Only on first transaction for the user
+                    </Text>
+                  </div>
+                )}
               </div>
 
               {/* Features List */}
@@ -456,7 +502,7 @@ function PricingContent() {
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {[
                   'Unlimited AI generations',
-                  'Custom transaction fee rates',
+                  ...(revenueCatEnabled ? ['Custom transaction fee rates'] : []),
                   'White-label solution',
                   'Dedicated account manager',
                   'Custom integrations',

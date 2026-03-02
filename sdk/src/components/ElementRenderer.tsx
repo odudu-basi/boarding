@@ -591,13 +591,32 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
         </View>
       );
 
-    case 'video':
-      // Video placeholder — actual implementation would use expo-av or react-native-video
-      // Resolve asset URL if present (for future implementation)
-      if (element.props?.url) {
-        const resolvedUrl = resolveAssetUrl(element.props.url);
-        // TODO: Implement actual video player with resolvedUrl
+    case 'video': {
+      const videoUrl = element.props?.url ? resolveAssetUrl(element.props.url) : null;
+      let VideoComponent: any = null;
+      try {
+        const expoAv = require('expo-av');
+        VideoComponent = expoAv.Video;
+      } catch {}
+
+      if (VideoComponent && videoUrl) {
+        const resizeMode = element.props?.resizeMode || 'contain';
+        return (
+          <View style={[style, { backgroundColor: (style as ViewStyle).backgroundColor || '#1a1a1a', overflow: 'hidden' }]}>
+            <VideoComponent
+              source={{ uri: videoUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode={resizeMode}
+              shouldPlay={element.props?.autoPlay !== false}
+              isLooping={element.props?.loop !== false}
+              isMuted={element.props?.muted !== false}
+              useNativeControls={false}
+            />
+          </View>
+        );
       }
+
+      // Fallback when expo-av is unavailable or no URL
       return (
         <View
           style={[
@@ -617,14 +636,44 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
           )}
         </View>
       );
+    }
 
-    case 'lottie':
-      // Lottie placeholder — actual implementation would use lottie-react-native
-      // Resolve asset URL if present (for future implementation)
-      if (element.props?.url) {
-        const resolvedUrl = resolveAssetUrl(element.props.url);
-        // TODO: Implement actual Lottie player with resolvedUrl
+    case 'lottie': {
+      const lottieUrl = element.props?.url ? resolveAssetUrl(element.props.url) : null;
+      let LottieView: any = null;
+      try {
+        LottieView = require('lottie-react-native').default;
+      } catch {}
+
+      if (LottieView && lottieUrl) {
+        // Decode base64 data URLs to get the Lottie JSON object
+        let lottieSource: any;
+        if (lottieUrl.startsWith('data:application/json;base64,')) {
+          try {
+            const base64Data = lottieUrl.replace('data:application/json;base64,', '');
+            const jsonString = atob(base64Data);
+            lottieSource = JSON.parse(jsonString);
+          } catch {
+            lottieSource = { uri: lottieUrl };
+          }
+        } else {
+          lottieSource = { uri: lottieUrl };
+        }
+
+        return (
+          <View style={[style, { backgroundColor: (style as ViewStyle).backgroundColor || '#f8f8ff', overflow: 'hidden' }]}>
+            <LottieView
+              source={lottieSource}
+              style={{ width: '100%', height: '100%' }}
+              autoPlay={element.props?.autoPlay !== false}
+              loop={element.props?.loop !== false}
+              speed={element.props?.speed || 1}
+            />
+          </View>
+        );
       }
+
+      // Fallback when lottie-react-native is unavailable or no URL
       return (
         <View
           style={[
@@ -644,6 +693,7 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
           )}
         </View>
       );
+    }
 
     case 'input': {
       // Only apply default border if borderWidth is not explicitly defined (including 0)

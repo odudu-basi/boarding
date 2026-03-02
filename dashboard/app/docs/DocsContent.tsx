@@ -12,9 +12,11 @@ import { trackSdkDocsViewed, trackSdkApiKeyCopied } from '@/lib/mixpanel'
 type Section =
   | 'quick-start'
   | 'ai-setup'
+  | 'ai-builder'
   | 'installation'
   | 'custom-screens'
   | 'variables'
+  | 'lottie-video'
   | 'revenuecat'
   | 'ab-testing'
   | 'sdk-reference'
@@ -30,6 +32,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'quick-start', label: 'Quick Start' },
       { id: 'ai-setup', label: 'AI Setup' },
+      { id: 'ai-builder', label: 'AI Builder' },
     ],
   },
   {
@@ -39,6 +42,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'custom-screens', label: 'Custom Screens' },
       { id: 'variables', label: 'Variables & Conditions' },
     ],
+  },
+  {
+    label: 'Media',
+    items: [{ id: 'lottie-video', label: 'Lottie & Video' }],
   },
   {
     label: 'Monetization',
@@ -149,7 +156,7 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens, isAut
   // Handle URL query parameter for direct navigation
   useEffect(() => {
     const section = searchParams.get('section')
-    if (section && ['quick-start', 'ai-setup', 'installation', 'custom-screens', 'variables', 'revenuecat', 'ab-testing', 'sdk-reference'].includes(section)) {
+    if (section && ['quick-start', 'ai-setup', 'ai-builder', 'installation', 'custom-screens', 'variables', 'lottie-video', 'revenuecat', 'ab-testing', 'sdk-reference'].includes(section)) {
       setActiveSection(section as Section)
     }
   }, [searchParams])
@@ -190,9 +197,11 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens, isAut
     switch (activeSection) {
       case 'quick-start': return <QuickStartSection onNavigate={setActiveSection} />
       case 'ai-setup': return <AISetupSection onCopy={copyPrompt} copied={copied} />
+      case 'ai-builder': return <AIBuilderSection />
       case 'installation': return <InstallationSection testApiKey={testApiKey} productionApiKey={productionApiKey} isAuthenticated={isAuthenticated} />
       case 'custom-screens': return <CustomScreensSection />
       case 'variables': return <VariablesSection />
+      case 'lottie-video': return <LottieVideoSection />
       case 'revenuecat': return <RevenueCatSection />
       case 'ab-testing': return <ABTestingSection />
       case 'sdk-reference': return <SDKReferenceSection />
@@ -375,6 +384,8 @@ Install the SDK and its peer dependency:
 npm install noboarding @react-native-async-storage/async-storage
 \`\`\`
 
+The SDK includes \`expo-av\` (video playback) and \`lottie-react-native\` (Lottie animations) as built-in dependencies. These are used to render video and Lottie elements created in the dashboard's AI Builder. No extra installation is needed — they resolve automatically in Expo projects.
+
 ---
 
 ## Step 2: Add OnboardingFlow to My App
@@ -403,6 +414,7 @@ export default function App() {
         }}
         // Add customComponents here if I have custom screens (see below)
         // Add onUserIdGenerated here if using RevenueCat (see below)
+        // Add loadingComponent to show a custom splash/loading screen while the flow loads
       />
     );
   }
@@ -570,6 +582,7 @@ These events are tracked automatically by the SDK — no code needed:
 - The SDK only works with React Native / Expo apps
 - Follow React Native best practices with proper error handling and loading states
 - Add comments explaining the onUserIdGenerated callback (it's critical for analytics)
+- The SDK ships with expo-av and lottie-react-native for rendering video and Lottie animation elements designed in the AI Builder. These are included as dependencies and require no extra setup in Expo projects.
 - Ask me questions if anything about my app setup is unclear — don't make assumptions`
 }
 
@@ -927,6 +940,25 @@ export default function App() {
           <Text size="sm">
             The SDK automatically detects your environment. During development (when <code style={inlineCodeStyle}>__DEV__ === true</code>), it uses the test key. In production builds, it uses the production key.
           </Text>
+        </Card>
+
+        <Heading level={4} style={{ marginTop: theme.spacing.lg, marginBottom: theme.spacing.sm }}>
+          Custom Loading Screen
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          While the SDK fetches your flow config, it shows a default spinner. You can replace it with your own loading UI using the <code style={inlineCodeStyle}>loadingComponent</code> prop:
+        </Text>
+        <Card padding="sm">
+          <pre style={codeBlockStyle}>{`<OnboardingFlow
+  testKey="..."
+  productionKey="..."
+  loadingComponent={
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Image source={require('./assets/splash.png')} />
+    </View>
+  }
+  onComplete={(userData) => { ... }}
+/>`}</pre>
         </Card>
       </div>
 
@@ -1910,6 +1942,7 @@ function SDKReferenceSection() {
                 ['customComponents', 'Record<string, React.FC<CustomScreenProps>>', 'No', 'Map of custom screen components. Keys must match dashboard component names.'],
                 ['initialVariables', 'Record<string, any>', 'No', 'Pre-set variables available to all screens via template syntax.'],
                 ['onUserIdGenerated', '(userId: string) => void', 'No', 'Called with the auto-generated user ID. Use to sync with RevenueCat.'],
+                ['loadingComponent', 'React.ReactNode', 'No', 'Custom loading UI shown while the flow config is being fetched. Defaults to a spinner.'],
                 ['baseUrl', 'string', 'No', 'Custom API base URL. Only needed for self-hosted deployments.'],
               ].map(([prop, type, req, desc], i) => (
                 <tr key={prop} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : theme.colors.background }}>
@@ -2069,6 +2102,335 @@ interface CustomScreenProps {
   console.log(userData);
 }}`}</pre>
         </Card>
+      </div>
+    </div>
+  )
+}
+
+// ── AI Builder ──────────────────────────────────────────────────────────
+
+function AIBuilderSection() {
+  return (
+    <div>
+      <Heading level={1} serif style={{ marginBottom: theme.spacing.xs }}>
+        AI Builder
+      </Heading>
+      <Text variant="muted" style={{ marginBottom: theme.spacing.xl }}>
+        Generate onboarding screens from natural language prompts
+      </Text>
+
+      <Callout color="purple">
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.sm }}>
+          How it works
+        </Heading>
+        <Text variant="muted">
+          The AI Builder lets you describe an onboarding screen in plain English. It generates a fully styled, interactive screen using the Noboarding element system — text, images, buttons, inputs, videos, Lottie animations, and more.
+        </Text>
+      </Callout>
+
+      {/* Workflow */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Workflow
+        </Heading>
+        <ol style={{ marginLeft: theme.spacing.lg }}>
+          <li style={listItemStyle}>
+            <strong>Create a flow</strong> — Open your project and click &quot;New Flow&quot;.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Add a screen</strong> — Click the <code style={inlineCodeStyle}>+</code> button, then choose &quot;AI Screen&quot;.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Describe your screen</strong> — Type a prompt like &quot;Welcome screen with a hero image, headline, subtitle, and a get-started button&quot;.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Iterate</strong> — Chat with the AI to refine the layout, copy, colors, or interactions.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Publish</strong> — When you are happy, publish the flow. It goes live instantly — no app update needed.
+          </li>
+        </ol>
+      </div>
+
+      {/* Element Types */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Element Types
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          The AI can generate screens using any of these native elements:
+        </Text>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Element</th>
+              <th style={thStyle}>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['text', 'Headings, paragraphs, labels with full styling'],
+              ['image', 'Static images from uploaded assets or URLs'],
+              ['video', 'Inline video playback (via expo-av)'],
+              ['lottie', 'Lottie JSON animations (via lottie-react-native)'],
+              ['button', 'Buttons with navigation, variable-setting, and haptic actions'],
+              ['input', 'Text inputs that write to flow variables'],
+              ['container', 'Flex containers for layout grouping'],
+              ['icon', 'Icons from Feather, Material, Ionicons, and FontAwesome'],
+              ['spacer', 'Flexible spacing between elements'],
+              ['divider', 'Horizontal rule dividers'],
+            ].map(([name, desc]) => (
+              <tr key={name}>
+                <td style={tdStyle}><code style={inlineCodeStyle}>{name}</code></td>
+                <td style={tdStyle}>{desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Asset System */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Asset System
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          When you upload media (images, videos, Lottie files) in the dashboard, each file becomes a named asset. The AI references these assets using the <code style={inlineCodeStyle}>asset:name</code> syntax.
+        </Text>
+        <Card padding="sm" style={{ marginBottom: theme.spacing.md }}>
+          <pre style={codeBlockStyle}>{`// How the AI references an uploaded video called "hero-video"
+{
+  "type": "video",
+  "props": {
+    "url": "asset:hero-video",
+    "autoPlay": true,
+    "loop": true,
+    "muted": true
+  }
+}`}</pre>
+        </Card>
+        <Text variant="muted">
+          At runtime the SDK resolves <code style={inlineCodeStyle}>asset:hero-video</code> to the actual media data and plays it natively using expo-av (video) or lottie-react-native (Lottie).
+        </Text>
+      </div>
+
+      {/* Tips */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Prompt Tips
+        </Heading>
+        <ul style={{ marginLeft: theme.spacing.lg }}>
+          <li style={listItemStyle}>Be specific about layout — mention &quot;centered&quot;, &quot;full-width&quot;, &quot;at the bottom&quot;, etc.</li>
+          <li style={listItemStyle}>Reference your uploaded assets by name — &quot;use the hero-video asset as a background video&quot;.</li>
+          <li style={listItemStyle}>Describe interactions — &quot;tapping the button should go to the next screen&quot; or &quot;save the input to a variable called userName&quot;.</li>
+          <li style={listItemStyle}>Iterate with follow-ups — &quot;make the heading larger&quot;, &quot;change the button color to blue&quot;.</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+// ── Lottie & Video ──────────────────────────────────────────────────────
+
+function LottieVideoSection() {
+  return (
+    <div>
+      <Heading level={1} serif style={{ marginBottom: theme.spacing.xs }}>
+        Lottie & Video
+      </Heading>
+      <Text variant="muted" style={{ marginBottom: theme.spacing.xl }}>
+        Rich media support for onboarding screens
+      </Text>
+
+      <Callout color="green">
+        <Text variant="muted">
+          <strong>Pre-installed:</strong> The Noboarding SDK includes <code style={inlineCodeStyle}>expo-av</code> and <code style={inlineCodeStyle}>lottie-react-native</code> as dependencies. If your app already uses Expo, these are resolved automatically — no extra installation needed.
+        </Text>
+      </Callout>
+
+      {/* How it works */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          How Media Works
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          When you upload a video or Lottie file in the dashboard, it gets stored as a named asset. The AI Builder (or you manually) references it in a screen definition. At runtime, the SDK:
+        </Text>
+        <ol style={{ marginLeft: theme.spacing.lg }}>
+          <li style={listItemStyle}>Receives the screen JSON from the server, including <code style={inlineCodeStyle}>asset:name</code> references.</li>
+          <li style={listItemStyle}>Resolves each <code style={inlineCodeStyle}>asset:name</code> to the actual base64 data URL from the assets array.</li>
+          <li style={listItemStyle}>Renders the media natively — <code style={inlineCodeStyle}>expo-av</code> for video, <code style={inlineCodeStyle}>lottie-react-native</code> for Lottie.</li>
+        </ol>
+      </div>
+
+      {/* Video */}
+      <div style={sectionGap}>
+        <Heading level={2} serif style={{ marginBottom: theme.spacing.md }}>
+          Video
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          Video elements play inline using <code style={inlineCodeStyle}>expo-av</code>. They support autoplay, looping, and muted playback — ideal for background loops or hero demos.
+        </Text>
+
+        <Heading level={4} style={{ marginBottom: theme.spacing.sm }}>
+          Configuration Props
+        </Heading>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Prop</th>
+              <th style={thStyle}>Type</th>
+              <th style={thStyle}>Default</th>
+              <th style={thStyle}>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['url', 'string', '—', 'Asset reference or direct URL'],
+              ['autoPlay', 'boolean', 'true', 'Start playing automatically'],
+              ['loop', 'boolean', 'true', 'Loop the video continuously'],
+              ['muted', 'boolean', 'true', 'Mute audio by default'],
+              ['resizeMode', 'string', '"contain"', '"contain", "cover", or "stretch"'],
+            ].map(([prop, type, def, desc]) => (
+              <tr key={prop}>
+                <td style={tdStyle}><code style={inlineCodeStyle}>{prop}</code></td>
+                <td style={tdStyle}><code style={inlineCodeStyle}>{type}</code></td>
+                <td style={tdStyle}>{def}</td>
+                <td style={tdStyle}>{desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <Card padding="sm" style={{ marginTop: theme.spacing.md }}>
+          <pre style={codeBlockStyle}>{`// Example: background video element
+{
+  "type": "video",
+  "props": {
+    "url": "asset:onboarding-bg",
+    "autoPlay": true,
+    "loop": true,
+    "muted": true,
+    "resizeMode": "cover"
+  },
+  "style": {
+    "width": "100%",
+    "height": 300
+  }
+}`}</pre>
+        </Card>
+      </div>
+
+      {/* Lottie */}
+      <div style={sectionGap}>
+        <Heading level={2} serif style={{ marginBottom: theme.spacing.md }}>
+          Lottie Animations
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          Lottie elements render JSON animations using <code style={inlineCodeStyle}>lottie-react-native</code>. Upload a <code style={inlineCodeStyle}>.json</code> Lottie file in the dashboard, and reference it in your screen.
+        </Text>
+
+        <Heading level={4} style={{ marginBottom: theme.spacing.sm }}>
+          Configuration Props
+        </Heading>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Prop</th>
+              <th style={thStyle}>Type</th>
+              <th style={thStyle}>Default</th>
+              <th style={thStyle}>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['url', 'string', '—', 'Asset reference or direct URL to Lottie JSON'],
+              ['autoPlay', 'boolean', 'true', 'Start animation automatically'],
+              ['loop', 'boolean', 'true', 'Loop the animation continuously'],
+              ['speed', 'number', '1', 'Playback speed multiplier'],
+            ].map(([prop, type, def, desc]) => (
+              <tr key={prop}>
+                <td style={tdStyle}><code style={inlineCodeStyle}>{prop}</code></td>
+                <td style={tdStyle}><code style={inlineCodeStyle}>{type}</code></td>
+                <td style={tdStyle}>{def}</td>
+                <td style={tdStyle}>{desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <Card padding="sm" style={{ marginTop: theme.spacing.md }}>
+          <pre style={codeBlockStyle}>{`// Example: Lottie animation element
+{
+  "type": "lottie",
+  "props": {
+    "url": "asset:welcome-animation",
+    "autoPlay": true,
+    "loop": true,
+    "speed": 1.2
+  },
+  "style": {
+    "width": 250,
+    "height": 250,
+    "alignSelf": "center"
+  }
+}`}</pre>
+        </Card>
+      </div>
+
+      {/* Supported Formats */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Supported Formats
+        </Heading>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Media Type</th>
+              <th style={thStyle}>Formats</th>
+              <th style={thStyle}>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={tdStyle}>Video</td>
+              <td style={tdStyle}>MP4, MOV, WebM</td>
+              <td style={tdStyle}>MP4 with H.264 recommended for best compatibility</td>
+            </tr>
+            <tr>
+              <td style={tdStyle}>Lottie</td>
+              <td style={tdStyle}>JSON</td>
+              <td style={tdStyle}>Lottie JSON format (exported from After Effects, Figma, or LottieFiles)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <Callout color="amber">
+          <Text variant="muted">
+            <strong>LottieFiles users:</strong> When downloading from LottieFiles, choose <strong>&quot;Lottie JSON&quot;</strong> or <strong>&quot;Optimized Lottie JSON&quot;</strong>. The <code style={inlineCodeStyle}>.lottie</code> / dotLottie formats are <strong>not supported</strong> — they use a different compressed binary format that requires a separate library.
+          </Text>
+        </Callout>
+      </div>
+
+      {/* Troubleshooting */}
+      <div style={sectionGap}>
+        <Heading level={3} serif style={{ marginBottom: theme.spacing.md }}>
+          Troubleshooting
+        </Heading>
+        <Text style={{ marginBottom: theme.spacing.sm }}>
+          If video or Lottie elements are not rendering:
+        </Text>
+        <ul style={{ marginLeft: theme.spacing.lg }}>
+          <li style={listItemStyle}>
+            <strong>Expo managed workflow:</strong> Both libraries are included as SDK dependencies and should resolve automatically. Run <code style={inlineCodeStyle}>npx expo install expo-av lottie-react-native</code> if your bundler reports missing modules.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Bare React Native:</strong> You may need to run <code style={inlineCodeStyle}>npx pod-install</code> (iOS) and rebuild the native project.
+          </li>
+          <li style={listItemStyle}>
+            <strong>Graceful fallback:</strong> If the native modules are unavailable, the SDK displays a placeholder instead of crashing.
+          </li>
+        </ul>
       </div>
     </div>
   )

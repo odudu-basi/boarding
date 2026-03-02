@@ -300,4 +300,5 @@ export interface OnboardingFlowProps {
   initialVariables?: Record<string, any>; // seed the variable store
   customComponents?: Record<string, React.ComponentType<CustomScreenProps>>;
   onUserIdGenerated?: (userId: string) => void; // Called when user ID is generated for analytics
+  loadingComponent?: React.ReactNode; // Custom loading UI shown while fetching flow config
 }

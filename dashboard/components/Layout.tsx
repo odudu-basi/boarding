@@ -14,6 +14,7 @@ import {
   HiOutlineBeaker,
   HiOutlineChartBar,
   HiOutlineBookOpen,
+  HiOutlineChatBubbleLeftRight,
   HiOutlineCog6Tooth,
   HiOutlineArrowTopRightOnSquare,
   HiOutlineChevronUpDown,
@@ -41,6 +42,7 @@ const NAV_ITEMS: Array<{ label: string; href: string; icon: any; match?: (p: str
   { label: 'A/B Tests', href: '/ab-tests', icon: HiOutlineBeaker, match: (p: string) => p.startsWith('/ab-tests') },
   { label: 'Analytics', href: '/analytics', icon: HiOutlineChartBar, match: (p: string) => p === '/analytics' },
   { label: 'Documentation', href: '/docs', icon: HiOutlineBookOpen, external: true },
+  { label: 'Support', href: '/support', icon: HiOutlineChatBubbleLeftRight, match: (p: string) => p === '/support' },
   { label: 'Settings', href: '/settings', icon: HiOutlineCog6Tooth, match: (p: string) => p === '/settings' },
 ]
 

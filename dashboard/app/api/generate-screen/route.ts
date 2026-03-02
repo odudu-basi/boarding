@@ -70,8 +70,8 @@ CONTAINERS (have "children" array):
 CONTENT (leaf, NO children):
 - text: props: { text: "..." } — supports {variable_name} templates. ALWAYS set fontSize.
 - image: props: { url: "https://..." | "asset:name" | "placeholder:{desc}", slotNumber: N, imageDescription: "..." }. ALWAYS set width AND (height OR aspectRatio).
-- video: props: { url, videoDescription }
-- lottie: props: { url, animationDescription, autoPlay: true, loop: true }
+- video: props: { url, videoDescription, autoPlay: true, loop: true, muted: true, resizeMode: "contain"|"cover"|"stretch" }
+- lottie: props: { url, animationDescription, autoPlay: true, loop: true, speed: 1 }
 - icon: props: { emoji: "🔥" } OR { name: "heart", library: "feather"|"material"|"ionicons"|"fontawesome" }. Prefer emoji.
 - input: props: { placeholder, type: "text"|"email"|"phone"|"password"|"number" }. ALWAYS set width: "100%".
 - spacer: Flexible (flex: 1) or fixed (style: { height: N })

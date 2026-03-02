@@ -29,7 +29,7 @@ import { useToast } from '@/components/Toast'
 import { PublishModal } from '@/components/PublishModal'
 
 const SCREEN_TYPES = [
-  { type: 'noboard_screen', name: 'Noboard Screen', icon: '✨' },
+  { type: 'noboard_screen', name: 'AI Screen', icon: '✨' },
   { type: 'custom_screen', name: 'Custom Screen', icon: '🛠️' },
 ]
 
@@ -1150,12 +1150,14 @@ export default function FlowBuilderPage() {
 
                 {/* Preview disclaimer */}
                 <div style={{
+                  padding: theme.spacing.sm,
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #f59e0b',
+                  borderRadius: theme.borderRadius.sm,
                   fontSize: '11px',
-                  color: theme.colors.textMuted,
-                  textAlign: 'center',
-                  maxWidth: 320,
+                  color: '#92400e',
                   lineHeight: '1.4',
-                  opacity: 0.7,
+                  maxWidth: 320,
                 }}>
                   Preview is an estimate. Margins, padding, and layout may differ on device. Publish and test on Expo for accurate results.
                 </div>
@@ -1185,6 +1187,8 @@ export default function FlowBuilderPage() {
                     assets={assets}
                     onAddAsset={(asset) => setAssets([...assets, asset])}
                     onRemoveAsset={(id) => setAssets(assets.filter(a => a.id !== id))}
+                    organizationId={config?.organization_id}
+                    flowId={params.id as string}
                   />
                 </div>
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
@@ -1209,6 +1213,8 @@ export default function FlowBuilderPage() {
                     assets={assets}
                     onAddAsset={(asset) => setAssets([...assets, asset])}
                     onRemoveAsset={(id) => setAssets(assets.filter(a => a.id !== id))}
+                    organizationId={config?.organization_id}
+                    flowId={params.id as string}
                   />
                 </div>
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
@@ -1240,6 +1246,7 @@ export default function FlowBuilderPage() {
                 </div>
               </div>
             )}
+
           </div>
         </div>
       </div>
@@ -2470,54 +2477,113 @@ const ASSET_TYPE_CONFIG = {
   lottie: { icon: '✨', accept: '.json,application/json', label: 'Lottie' },
 } as const
 
-function AssetsPanel({ assets, onAddAsset, onRemoveAsset }: {
+function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId }: {
   assets: Asset[]
   onAddAsset: (asset: Asset) => void
   onRemoveAsset: (id: string) => void
+  organizationId?: string
+  flowId: string
 }) {
   const { toast } = useToast()
   const [showAddForm, setShowAddForm] = useState(false)
   const [newAssetType, setNewAssetType] = useState<'image' | 'video' | 'lottie'>('image')
   const [newAssetName, setNewAssetName] = useState('')
-  const [newAssetData, setNewAssetData] = useState<string | null>(null)
+  const [newAssetFile, setNewAssetFile] = useState<File | null>(null)
+  const [newAssetPreview, setNewAssetPreview] = useState<string | null>(null)
   const [newAssetFileName, setNewAssetFileName] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [viewingAsset, setViewingAsset] = useState<Asset | null>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setNewAssetFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setNewAssetData(reader.result as string)
+    setNewAssetFile(file)
+    // Generate preview for images only
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = () => setNewAssetPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      setNewAssetPreview(null)
     }
-    reader.readAsDataURL(file)
   }
 
-  const handleAdd = () => {
+  const getFileExtension = (file: File): string => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    return ext || 'bin'
+  }
+
+  const handleAdd = async () => {
     const sanitizedName = newAssetName.trim().replace(/\s+/g, '_')
     if (!sanitizedName) return
-    if (!newAssetData) return
+    if (!newAssetFile) return
     if (assets.some(a => a.name === sanitizedName)) {
       toast(`An asset named "${sanitizedName}" already exists`, 'error')
       return
     }
 
-    onAddAsset({
-      id: `asset_${Date.now()}`,
-      name: sanitizedName,
-      type: newAssetType,
-      data: newAssetData,
-      createdAt: Date.now(),
-    })
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const ext = getFileExtension(newAssetFile)
+      const storagePath = `${organizationId || 'unknown'}/${flowId}/${sanitizedName}.${ext}`
 
-    setNewAssetName('')
-    setNewAssetData(null)
-    setNewAssetFileName('')
-    setShowAddForm(false)
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(storagePath, newAssetFile, {
+          upsert: true,
+          contentType: newAssetFile.type,
+        })
+
+      if (uploadError) {
+        toast(`Upload failed: ${uploadError.message}`, 'error')
+        return
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('assets')
+        .getPublicUrl(storagePath)
+
+      onAddAsset({
+        id: `asset_${Date.now()}`,
+        name: sanitizedName,
+        type: newAssetType,
+        data: urlData.publicUrl,
+        createdAt: Date.now(),
+      })
+
+      setNewAssetName('')
+      setNewAssetFile(null)
+      setNewAssetPreview(null)
+      setNewAssetFileName('')
+      setShowAddForm(false)
+    } catch (err: any) {
+      toast(`Upload failed: ${err.message}`, 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemove = async (asset: Asset) => {
+    // Delete from Supabase Storage if it's a storage URL
+    if (asset.data.includes('/storage/v1/object/public/assets/')) {
+      try {
+        const supabase = createClient()
+        const pathMatch = asset.data.split('/storage/v1/object/public/assets/')[1]
+        if (pathMatch) {
+          await supabase.storage.from('assets').remove([decodeURIComponent(pathMatch)])
+        }
+      } catch (err) {
+        console.error('Failed to delete from storage:', err)
+      }
+    }
+    onRemoveAsset(asset.id)
   }
 
   const formatSize = (dataUrl: string) => {
+    // For URLs (not base64), just show "Stored"
+    if (dataUrl.startsWith('http')) return 'Cloud'
     const bytes = Math.round((dataUrl.length * 3) / 4)
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -2566,7 +2632,8 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset }: {
                 key={type}
                 onClick={() => {
                   setNewAssetType(type)
-                  setNewAssetData(null)
+                  setNewAssetFile(null)
+                  setNewAssetPreview(null)
                   setNewAssetFileName('')
                 }}
                 style={{
@@ -2631,9 +2698,9 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset }: {
           </div>
 
           {/* Preview for images */}
-          {newAssetData && newAssetType === 'image' && (
+          {newAssetPreview && newAssetType === 'image' && (
             <img
-              src={newAssetData}
+              src={newAssetPreview}
               alt="Preview"
               style={{
                 width: '100%',
@@ -2648,19 +2715,19 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset }: {
           {/* Add button */}
           <button
             onClick={handleAdd}
-            disabled={!newAssetName.trim() || !newAssetData}
+            disabled={!newAssetName.trim() || !newAssetFile || uploading}
             style={{
               padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
               fontSize: '12px',
               fontWeight: '500',
-              backgroundColor: (!newAssetName.trim() || !newAssetData) ? theme.colors.border : theme.colors.primary,
+              backgroundColor: (!newAssetName.trim() || !newAssetFile || uploading) ? theme.colors.border : theme.colors.primary,
               color: '#fff',
               border: 'none',
               borderRadius: theme.borderRadius.sm,
-              cursor: (!newAssetName.trim() || !newAssetData) ? 'not-allowed' : 'pointer',
+              cursor: (!newAssetName.trim() || !newAssetFile || uploading) ? 'not-allowed' : 'pointer',
             }}
           >
-            Add Asset
+            {uploading ? 'Uploading...' : 'Add Asset'}
           </button>
         </div>
       )}
@@ -2700,7 +2767,7 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset }: {
               </code>
             </div>
             <button
-              onClick={() => onRemoveAsset(asset.id)}
+              onClick={() => handleRemove(asset)}
               style={{
                 padding: '2px 6px',
                 fontSize: '10px',
@@ -2929,6 +2996,18 @@ function ImageSlotsIndicator({ elements, assets, onSelectAsset }: {
                 : `Slot ${slot.slotNumber} needs ${slot.elementType}`}
             </Text>
           </div>
+
+          {/* Assigned asset name */}
+          {slot.hasUrl && slot.url?.startsWith('asset:') && (() => {
+            const assetName = slot.url!.replace('asset:', '')
+            const asset = assets.find(a => a.name === assetName)
+            if (!asset) return null
+            return (
+              <Text size="xs" style={{ color: theme.colors.primary, fontWeight: '500' }}>
+                {getAssetIcon(asset.type)} {asset.name}
+              </Text>
+            )
+          })()}
 
           {/* Asset selector button */}
           <button

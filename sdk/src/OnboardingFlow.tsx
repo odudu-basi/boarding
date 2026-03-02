@@ -51,6 +51,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   initialVariables,
   customComponents,
   onUserIdGenerated,
+  loadingComponent,
 }) => {
   // Determine which API key to use
   const getApiKey = (): string => {
@@ -285,6 +286,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   };
 
   if (loading) {
+    if (loadingComponent) {
+      return <>{loadingComponent}</>;
+    }
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
