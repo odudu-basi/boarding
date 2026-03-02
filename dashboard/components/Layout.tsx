@@ -6,6 +6,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useThemeMode } from '@/components/Providers'
+import { createClient } from '@/lib/supabase/client'
+import { identifyUser } from '@/lib/mixpanel'
 import {
   HiOutlineHome,
   HiOutlineRectangleStack,
@@ -56,6 +58,22 @@ export function Layout({ children, organizationName, plan, projects, currentProj
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const currentProject = projects?.find(p => p.id === currentProjectId) || projects?.[0]
+
+  // Identify user in Mixpanel on every dashboard page (covers Google OAuth logins)
+  useEffect(() => {
+    const identify = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        identifyUser(user.id, {
+          email: user.email,
+          organization_name: organizationName,
+          plan,
+        })
+      }
+    }
+    identify()
+  }, [organizationName, plan])
 
   // Close dropdown on outside click
   useEffect(() => {

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { theme } from '@/lib/theme'
 import { Button, Heading, Text } from '@/components/ui'
 import { CopyButton } from '@/components/CopyButton'
+import { identifyUser, trackSignupCompleted } from '@/lib/mixpanel'
 
 interface OnboardingWizardProps {
   organizationId: string
@@ -66,6 +67,27 @@ export function OnboardingWizard({ organizationId, organizationName, mode = 'ful
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Identify user in Mixpanel (covers Google OAuth users who skip the signup page tracking)
+  useEffect(() => {
+    const identifyOnboardingUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        identifyUser(user.id, {
+          email: user.email,
+          organization_id: organizationId,
+          organization_name: organizationName,
+          plan: 'free',
+          signup_date: new Date().toISOString(),
+          auth_provider: user.app_metadata?.provider || 'email',
+        })
+        trackSignupCompleted(user.email || '', organizationName)
+      }
+    }
+    if (!isNewProject) {
+      identifyOnboardingUser()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Step 1: Organization (full mode only)
   const [orgName, setOrgName] = useState(organizationName)
