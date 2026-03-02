@@ -57,11 +57,16 @@ export async function GET(request: Request) {
           .single()
 
         if (orgData) {
-          await adminSupabase.from('users').insert({
+          const { error: userInsertError } = await adminSupabase.from('users').insert({
             auth_user_id: user.id,
             organization_id: orgData.id,
             role: 'owner',
           })
+
+          if (userInsertError) {
+            console.error('Failed to create user row:', userInsertError.message)
+          }
+
           // New user — go to onboarding
           return NextResponse.redirect(new URL('/onboarding', request.url))
         }

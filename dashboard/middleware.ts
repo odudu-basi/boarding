@@ -43,7 +43,8 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico, icon.png (browser icons)
      * - public assets (images, etc.)
+     * - auth/callback (handles its own session via code exchange)
      */
-    '/((?!_next/static|_next/image|favicon\\.ico|icon\\.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|icon\\.png|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
