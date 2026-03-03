@@ -1,13 +1,15 @@
-import { Element, ElementStyle } from '@/lib/types'
+import { Element, ElementStyle, FlowTheme } from '@/lib/types'
 import { theme } from '@/lib/theme'
 import { useState } from 'react'
+import { ThemeAwareColorInput } from './ThemeAwareColorInput'
 
 interface HStackPropertiesPanelProps {
   element: Element
   onUpdate: (updates: Partial<Element>) => void
+  flowTheme?: FlowTheme
 }
 
-export function HStackPropertiesPanel({ element, onUpdate }: HStackPropertiesPanelProps) {
+export function HStackPropertiesPanel({ element, onUpdate, flowTheme }: HStackPropertiesPanelProps) {
   const style = element.style || {}
 
   const updateStyle = (updates: Partial<ElementStyle>) => {
@@ -157,9 +159,10 @@ export function HStackPropertiesPanel({ element, onUpdate }: HStackPropertiesPan
       {/* Layer Section */}
       <Section title="Layer" icon="◧">
         <Property label="Color">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.backgroundColor || '#000000'}
             onChange={(value) => updateStyle({ backgroundColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
 
@@ -397,9 +400,10 @@ export function HStackPropertiesPanel({ element, onUpdate }: HStackPropertiesPan
       {/* Borders Section */}
       <Section title="Borders" icon="□">
         <Property label="Color">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.borderColor || '#000000'}
             onChange={(value) => updateStyle({ borderColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
 

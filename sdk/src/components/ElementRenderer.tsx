@@ -13,8 +13,9 @@ import {
   ImageStyle,
   Animated,
 } from 'react-native';
-import { ElementNode, ElementStyle, ElementAction, Analytics, ConditionalDestination, ConditionalRoutes } from '../types';
+import { ElementNode, ElementStyle, ElementAction, Analytics, ConditionalDestination, ConditionalRoutes, FlowTheme } from '../types';
 import { resolveTemplate, evaluateCondition } from '../variableUtils';
+import { resolveThemeTokens } from '../themeResolver';
 import {
   createEntranceAnimationValues,
   startEntranceAnimation,
@@ -44,6 +45,7 @@ interface ElementRendererProps {
   variables?: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
   assets?: Array<{ name: string; type: string; data: string }>;
+  theme?: FlowTheme;
 }
 
 export const ElementRenderer: React.FC<ElementRendererProps> = ({
@@ -55,6 +57,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   variables = {},
   onSetVariable,
   assets = [],
+  theme: flowTheme,
 }) => {
   // Track toggled element IDs for toggle actions
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
@@ -192,6 +195,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           inputValues={inputValues}
           setInputValues={setInputValues}
           resolveAssetUrl={resolveAssetUrl}
+          flowTheme={flowTheme}
         />
       ))}
     </>
@@ -211,9 +215,10 @@ interface RenderNodeProps {
   setInputValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   staggerDelay?: number;  // For staggered entrance animations
   resolveAssetUrl: (url: string) => string;  // Asset URL resolver
+  flowTheme?: FlowTheme;
 }
 
-const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, staggerDelay = 0, resolveAssetUrl }) => {
+const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, staggerDelay = 0, resolveAssetUrl, flowTheme }) => {
   // Variable-based conditions — hide element if condition is not met
   if (element.conditions?.show_if) {
     const shouldShow = evaluateCondition(element.conditions.show_if, variables);
@@ -240,7 +245,10 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     }
   }, [element.interactive]);
 
-  const style = convertStyle(element.style || {});
+  const resolvedElementStyle = flowTheme
+    ? resolveThemeTokens(element.style || {}, flowTheme)
+    : (element.style || {});
+  const style = convertStyle(resolvedElementStyle);
   const isToggled = toggledIds.has(element.id);
 
   // Apply toggle visual state
@@ -345,7 +353,7 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     return <Animated.View style={animatedStyle}>{content}</Animated.View>;
   };
 
-  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, resolveAssetUrl };
+  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, inputValues, setInputValues, resolveAssetUrl, flowTheme };
 
   switch (element.type) {
     // ─── Containers ───

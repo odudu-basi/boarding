@@ -255,7 +255,6 @@ export const SummaryScreen: React.FC<CustomScreenProps> = ({
     //   nameCollectedAt: "2025-02-20...",
     //   userAge: 25,
     //   ageCollectedAt: "2025-02-20...",
-    //   _variables: { ... }
     // }
   }}
 />
@@ -860,7 +859,6 @@ const styles = StyleSheet.create({
     //   emailCollectedAt: "2025-02-20...",
     //   goals: ["Fitness", "Nutrition"],
     //   goalsCount: 2,
-    //   _variables: { ... }
     // }
   }}
 />

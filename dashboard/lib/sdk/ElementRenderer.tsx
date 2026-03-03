@@ -12,8 +12,9 @@ import {
   TextStyle,
   ImageStyle,
 } from 'react-native';
-import { ElementNode, ElementStyle, ElementAction, Analytics, ConditionalDestination, ConditionalRoutes } from './types';
+import { ElementNode, ElementStyle, ElementAction, Analytics, ConditionalDestination, ConditionalRoutes, FlowTheme } from './types';
 import { resolveTemplate, evaluateCondition } from './variableUtils';
+import { resolveThemeTokens } from '../themeResolver';
 // WEB ICONS: Import react-icons for web compatibility
 import * as FiIcons from 'react-icons/fi';      // Feather
 import * as MdIcons from 'react-icons/md';      // Material
@@ -89,6 +90,7 @@ interface ElementRendererProps {
   variables?: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
   assets?: Array<{ name: string; type: string; data: string }>;
+  theme?: FlowTheme;
 }
 
 export const ElementRenderer: React.FC<ElementRendererProps> = ({
@@ -100,6 +102,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   variables = {},
   onSetVariable,
   assets = [],
+  theme: flowTheme,
 }) => {
   // Track toggled element IDs for toggle actions
   const [toggledIds, setToggledIds] = useState<Set<string>>(new Set());
@@ -222,6 +225,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
           variables={variables}
           onSetVariable={onSetVariable}
           assets={assets}
+          flowTheme={flowTheme}
         />
       ))}
     </>
@@ -238,9 +242,10 @@ interface RenderNodeProps {
   variables: Record<string, any>;
   onSetVariable?: (name: string, value: any) => void;
   assets: Array<{ name: string; type: string; data: string }>;
+  flowTheme?: FlowTheme;
 }
 
-const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, assets }) => {
+const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelections, onAction, variables, onSetVariable, assets, flowTheme }) => {
   // Helper function to resolve asset: URLs to actual data URLs
   const resolveAssetUrl = (url: string): string => {
     if (!url || !url.startsWith('asset:')) {
@@ -264,7 +269,10 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     if (!shouldShow) return null;
   }
 
-  const style = convertStyle(element.style || {});
+  const resolvedElementStyle = flowTheme
+    ? resolveThemeTokens(element.style || {}, flowTheme)
+    : (element.style || {});
+  const style = convertStyle(resolvedElementStyle);
   const isToggled = toggledIds.has(element.id);
 
   // Apply toggle visual state
@@ -311,7 +319,7 @@ const RenderNode: React.FC<RenderNodeProps> = ({ element, toggledIds, groupSelec
     );
   };
 
-  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, assets };
+  const childProps = { toggledIds, groupSelections, onAction, variables, onSetVariable, assets, flowTheme };
 
   switch (element.type) {
     // ─── Containers ───

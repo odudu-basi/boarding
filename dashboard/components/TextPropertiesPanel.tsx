@@ -1,13 +1,15 @@
-import { Element, ElementStyle } from '@/lib/types'
+import { Element, ElementStyle, FlowTheme } from '@/lib/types'
 import { theme } from '@/lib/theme'
 import { useState, useEffect } from 'react'
+import { ThemeAwareColorInput } from './ThemeAwareColorInput'
 
 interface TextPropertiesPanelProps {
   element: Element
   onUpdate: (updates: Partial<Element>) => void
+  flowTheme?: FlowTheme
 }
 
-export function TextPropertiesPanel({ element, onUpdate }: TextPropertiesPanelProps) {
+export function TextPropertiesPanel({ element, onUpdate, flowTheme }: TextPropertiesPanelProps) {
   const style = element.style || {}
   const props = element.props || {}
 
@@ -199,16 +201,18 @@ export function TextPropertiesPanel({ element, onUpdate }: TextPropertiesPanelPr
       {/* Layer Section */}
       <Section title="Layer" icon="◧">
         <Property label="Color">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.color || '#000000'}
             onChange={(value) => updateStyle({ color: value })}
+            flowTheme={flowTheme}
           />
         </Property>
 
         <Property label="Background">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.backgroundColor || 'transparent'}
             onChange={(value) => updateStyle({ backgroundColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
 
@@ -334,9 +338,10 @@ export function TextPropertiesPanel({ element, onUpdate }: TextPropertiesPanelPr
       {/* Borders Section */}
       <Section title="Borders" icon="□">
         <Property label="Color">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.borderColor || '#000000'}
             onChange={(value) => updateStyle({ borderColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
 

@@ -3,7 +3,7 @@ import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API } from './api';
 import { AnalyticsManager } from './analytics';
-import { OnboardingFlowProps, ScreenConfig, ConditionalDestination, ConditionalRoutes } from './types';
+import { OnboardingFlowProps, ScreenConfig, ConditionalDestination, ConditionalRoutes, FlowTheme } from './types';
 import { resolveDestination } from './variableUtils';
 import { ElementRenderer } from './components/ElementRenderer';
 
@@ -79,6 +79,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [collectedData, setCollectedData] = useState<Record<string, any>>({});
   const [variables, setVariables] = useState<Record<string, any>>(initialVariables || {});
+  const [flowTheme, setFlowTheme] = useState<FlowTheme | undefined>(undefined);
 
   const apiRef = useRef<API | null>(null);
   const analyticsRef = useRef<AnalyticsManager | null>(null);
@@ -154,6 +155,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       // Store assets from config
       if (configResponse.config.assets) {
         setAssets(configResponse.config.assets);
+      }
+
+      // Store flow theme for runtime token resolution
+      if (configResponse.config.theme) {
+        setFlowTheme(configResponse.config.theme);
       }
 
       // Handle A/B test experiment assignment
@@ -252,9 +258,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   const handleComplete = async (lastScreenData?: Record<string, any>) => {
     const finalData = {
+      ...variables,
       ...collectedData,
       ...(lastScreenData || {}),
-      _variables: variables,
     };
 
     // Track completion
@@ -362,6 +368,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           variables={allVariables}
           onSetVariable={handleSetVariable}
           assets={assets}
+          theme={flowTheme}
         />
       </View>
     );
@@ -395,7 +402,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           onNext={() => handleNext()}
           onBack={currentIndex > 0 ? handleBack : undefined}
           onSkip={onSkip ? handleSkipAll : undefined}
-          data={collectedData}
+          data={{ ...collectedData, ...variables }}
           onDataUpdate={(newData) => setCollectedData(prev => ({ ...prev, ...newData }))}
         />
       </View>

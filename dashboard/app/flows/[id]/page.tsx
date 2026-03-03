@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { OnboardingConfig, Screen, ChatMessage, Asset, Element as FlowElement } from '@/lib/types'
+import { OnboardingConfig, Screen, ChatMessage, Asset, Element as FlowElement, FlowTheme } from '@/lib/types'
 import { useParams, useRouter } from 'next/navigation'
 import { theme } from '@/lib/theme'
 import { Button, Card, Heading, Text } from '@/components/ui'
@@ -27,6 +27,8 @@ import { CarouselPropertiesPanel } from '@/components/CarouselPropertiesPanel'
 import { publishFlow as publishFlowAction } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { PublishModal } from '@/components/PublishModal'
+import { ThemeEditor } from '@/components/ThemeEditor'
+import { DEFAULT_FLOW_THEME } from '@/lib/flowTheme'
 
 const SCREEN_TYPES = [
   { type: 'noboard_screen', name: 'AI Screen', icon: '✨' },
@@ -59,14 +61,21 @@ export default function FlowBuilderPage() {
   const [selectedDevice, setSelectedDevice] = useState<string>('iphone-16-pro')
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait')
   const [zoom, setZoom] = useState<number>(100)
-  const [leftSidebarTab, setLeftSidebarTab] = useState<'layout' | 'ai-builder'>('layout')
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'layout' | 'ai-builder' | 'theme'>('layout')
   const [chatHistories, setChatHistories] = useState<Record<string, ChatMessage[]>>({})
   const [assets, setAssets] = useState<Asset[]>([])
   const [draggedScreenIndex, setDraggedScreenIndex] = useState<number | null>(null)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [screenMenuOpen, setScreenMenuOpen] = useState(false)
   const [showPublishModal, setShowPublishModal] = useState(false)
+  const [flowTheme, setFlowTheme] = useState<FlowTheme>(DEFAULT_FLOW_THEME)
+  const [showThemeModal, setShowThemeModal] = useState(false)
+  const [showSetupModal, setShowSetupModal] = useState(false)
+  const [setupPrompt, setSetupPrompt] = useState('')
+  const [setupParsing, setSetupParsing] = useState(false)
+  const [setupError, setSetupError] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
+  const [dismissedVarHints, setDismissedVarHints] = useState<Set<string>>(new Set())
   const [userCredits, setUserCredits] = useState<number | null>(null)
   const [loadingCredits, setLoadingCredits] = useState(true)
   const [subscriptionPlan, setSubscriptionPlan] = useState<string>('free')
@@ -116,6 +125,44 @@ export default function FlowBuilderPage() {
   }
 
   const toggleScreenVisibility = (index: number) => {
+    const screen = screens[index]
+    const isHiding = !screen.hidden
+
+    const allVars = collectFlowVariables(screens)
+
+    if (isHiding) {
+      // Check if this screen sets variables that other screens use
+      const affectedVars = allVars.filter(v =>
+        v.setByScreens.includes(index) && v.readByScreens.some(r => r !== index)
+      )
+
+      if (affectedVars.length > 0) {
+        const varNames = affectedVars.map(v => v.name).join(', ')
+        const readingScreens = [...new Set(affectedVars.flatMap(v => v.readByScreens.filter(r => r !== index)))]
+          .map(i => `Screen ${i + 1}`)
+          .join(', ')
+        const confirmed = window.confirm(
+          `Warning: This screen sets variables (${varNames}) that are used by ${readingScreens}.\n\nHiding this screen means those variables will never be set, which may cause missing text or broken navigation on those screens.\n\nHide anyway?`
+        )
+        if (!confirmed) return
+      }
+    } else {
+      // Unhiding — check if this screen reads variables from screens that are currently hidden
+      const missingVars = allVars.filter(v =>
+        v.readByScreens.includes(index) &&
+        v.setByScreens.length > 0 &&
+        v.setByScreens.every(s => s === index || screens[s]?.hidden)
+      )
+
+      if (missingVars.length > 0) {
+        const varNames = missingVars.map(v => v.name).join(', ')
+        const hiddenSources = [...new Set(missingVars.flatMap(v => v.setByScreens.filter(s => s !== index && screens[s]?.hidden)))]
+          .map(i => `Screen ${i + 1}`)
+          .join(', ')
+        toast(`Heads up: This screen uses variables (${varNames}) from ${hiddenSources}, which is currently hidden.`, 'info')
+      }
+    }
+
     const newScreens = [...screens]
     newScreens[index] = { ...newScreens[index], hidden: !newScreens[index].hidden }
     setScreens(newScreens)
@@ -132,6 +179,9 @@ export default function FlowBuilderPage() {
       setConfig(data)
       setScreens(data.config.screens || [])
       setAssets(data.config.assets || [])
+      if (data.config.theme) {
+        setFlowTheme(data.config.theme)
+      }
 
       // Set subscription plan from organization
       if (data.organizations && typeof data.organizations === 'object' && 'plan' in data.organizations) {
@@ -186,7 +236,10 @@ export default function FlowBuilderPage() {
         custom_variables: [],
       }),
     }
-    setScreens([...screens, newScreen])
+    const newScreens = [...screens, newScreen]
+    setScreens(newScreens)
+    setSelectedScreen(newScreens.length - 1)
+    setShowScreenPicker(false)
   }
 
   const removeScreen = (index: number) => {
@@ -284,6 +337,7 @@ export default function FlowBuilderPage() {
           version: config?.version || '1.0.0',
           screens,
           assets,
+          theme: flowTheme,
         },
         updated_at: new Date().toISOString(),
       })
@@ -291,6 +345,72 @@ export default function FlowBuilderPage() {
 
     setSaving(false)
     toast('Flow saved', 'success')
+  }
+
+  const handleSetupSubmit = async () => {
+    if (!setupPrompt.trim()) {
+      setSetupError('Please paste the setup prompt output.')
+      return
+    }
+
+    setSetupParsing(true)
+    setSetupError('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setSetupError('You must be logged in.')
+        setSetupParsing(false)
+        return
+      }
+
+      const res = await fetch('/api/parse-setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ prompt: setupPrompt.trim() }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setSetupError(data.error || 'Failed to parse setup prompt.')
+        setSetupParsing(false)
+        return
+      }
+
+      if (!data.screens || data.screens.length === 0) {
+        setSetupError('No screens found in the setup prompt.')
+        setSetupParsing(false)
+        return
+      }
+
+      // Create custom screens from parsed data
+      const newScreens: Screen[] = data.screens.map((s: any, i: number) => ({
+        id: `screen_${Date.now()}_${i}`,
+        type: 'custom_screen' as const,
+        props: {},
+        custom_component_name: s.component_name,
+        custom_description: s.description,
+        custom_variables: Array.isArray(s.variables) ? s.variables.map((v: any) => ({
+          name: v.name,
+          type: (['string', 'number', 'boolean', 'list', 'any'].includes(v.type) ? v.type : 'any') as 'string' | 'number' | 'boolean' | 'list' | 'any',
+        })) : [],
+      }))
+
+      setScreens(prev => [...prev, ...newScreens])
+      setSelectedScreen(screens.length) // Select the first new screen
+      setShowSetupModal(false)
+      setSetupPrompt('')
+      setSetupError('')
+      toast(`${newScreens.length} screen${newScreens.length > 1 ? 's' : ''} added`, 'success')
+    } catch (err: any) {
+      setSetupError(err.message || 'Something went wrong.')
+    } finally {
+      setSetupParsing(false)
+    }
   }
 
   const publishFlow = async (environment: 'test' | 'production') => {
@@ -305,6 +425,7 @@ export default function FlowBuilderPage() {
             version: config?.version || '1.0.0',
             screens,
             assets,
+            theme: flowTheme,
           },
           environment,
           updated_at: new Date().toISOString(),
@@ -371,6 +492,9 @@ export default function FlowBuilderPage() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
+            <Button variant="secondary" onClick={() => setShowSetupModal(true)} style={{ fontSize: '13px' }}>
+              Setup
+            </Button>
             <Button variant="secondary" onClick={saveFlow} disabled={saving}>
               {saving ? 'Saving...' : 'Save Draft'}
             </Button>
@@ -431,7 +555,6 @@ export default function FlowBuilderPage() {
                         key={screenType.type}
                         onClick={() => {
                           addScreen(screenType.type)
-                          setShowScreenPicker(false)
                         }}
                         style={{
                           width: '100%',
@@ -576,6 +699,23 @@ export default function FlowBuilderPage() {
                 >
                   AI Chat
                 </button>
+                <button
+                  onClick={() => setLeftSidebarTab('theme')}
+                  style={{
+                    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderBottom: leftSidebarTab === 'theme' ? `2px solid ${theme.colors.primary}` : '2px solid transparent',
+                    color: leftSidebarTab === 'theme' ? theme.colors.primary : theme.colors.textMuted,
+                    fontSize: theme.fontSizes.sm,
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    fontFamily: theme.fonts.sans,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  Theme
+                </button>
                 {/* Screen three-dot menu */}
                 <div ref={screenMenuRef} style={{ marginLeft: 'auto', position: 'relative', marginBottom: '2px' }}>
                   <button
@@ -685,6 +825,284 @@ export default function FlowBuilderPage() {
                       <div style={{ textAlign: 'center', padding: theme.spacing.xl, color: theme.colors.textMuted }}>
                         <Text variant="muted" size="sm">No screens yet</Text>
                         <Text variant="light" size="xs" style={{ marginTop: theme.spacing.xs }}>Click + to add a screen</Text>
+                      </div>
+                    ) : selectedScreen !== null && screens[selectedScreen]?.type === 'custom_screen' ? (
+                      <div style={{ padding: theme.spacing.md, display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs }}>
+                          <span style={{ fontSize: '24px' }}>🛠️</span>
+                          <Heading level={4} style={{ color: theme.colors.text }}>Custom Component</Heading>
+                        </div>
+
+                        <PropertySection title="Component Name">
+                          <input
+                            type="text"
+                            value={screens[selectedScreen].custom_component_name || ''}
+                            onChange={(e) => {
+                              const newScreens = [...screens]
+                              newScreens[selectedScreen] = { ...newScreens[selectedScreen], custom_component_name: e.target.value }
+                              setScreens(newScreens)
+                            }}
+                            placeholder="e.g., MealTrackerScreen"
+                            style={{
+                              width: '100%',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              border: `1px solid ${theme.colors.border}`,
+                              borderRadius: theme.borderRadius.md,
+                              fontSize: theme.fontSizes.sm,
+                              fontFamily: theme.fonts.sans,
+                              backgroundColor: theme.colors.surface,
+                              color: theme.colors.text,
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </PropertySection>
+
+                        <PropertySection title="Description">
+                          <textarea
+                            value={(screens[selectedScreen] as any).custom_description || ''}
+                            onChange={(e) => {
+                              const newScreens = [...screens]
+                              newScreens[selectedScreen] = { ...newScreens[selectedScreen], custom_description: e.target.value } as any
+                              setScreens(newScreens)
+                            }}
+                            rows={3}
+                            placeholder="Describe what this component does..."
+                            style={{
+                              width: '100%',
+                              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                              border: `1px solid ${theme.colors.border}`,
+                              borderRadius: theme.borderRadius.md,
+                              fontFamily: theme.fonts.sans,
+                              fontSize: theme.fontSizes.sm,
+                              resize: 'vertical',
+                              backgroundColor: theme.colors.surface,
+                              color: theme.colors.text,
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </PropertySection>
+
+                        <PropertySection title="Variables Provided">
+                          {(() => {
+                            const screenId = screens[selectedScreen]?.id || ''
+                            const currentVars: { name: string; type: 'string' | 'number' | 'boolean' | 'list' | 'any' }[] = (screens[selectedScreen] as any).custom_variables || []
+                            const hasVars = currentVars.length > 0
+                            const showHint = !hasVars && !dismissedVarHints.has(screenId)
+
+                            const addVariable = (name: string, type: 'string' | 'number' | 'boolean' | 'list' | 'any') => {
+                              const trimmed = name.trim().replace(/\s+/g, '_')
+                              if (!trimmed) return
+                              if (currentVars.some(v => v.name === trimmed)) return
+                              const newVars = [...currentVars, { name: trimmed, type }]
+                              const newScreens = [...screens]
+                              newScreens[selectedScreen] = { ...newScreens[selectedScreen], custom_variables: newVars } as any
+                              setScreens(newScreens)
+                            }
+
+                            const removeVariable = (name: string) => {
+                              const newVars = currentVars.filter(v => v.name !== name)
+                              const newScreens = [...screens]
+                              newScreens[selectedScreen] = { ...newScreens[selectedScreen], custom_variables: newVars.length > 0 ? newVars : undefined } as any
+                              setScreens(newScreens)
+                            }
+
+                            return (
+                              <>
+                                {showHint && (
+                                  <div style={{
+                                    backgroundColor: '#FEF3C7',
+                                    border: '1px solid #F59E0B',
+                                    borderRadius: theme.borderRadius.md,
+                                    padding: theme.spacing.sm,
+                                    marginBottom: theme.spacing.sm,
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: theme.spacing.sm,
+                                  }}>
+                                    <div style={{ flex: 1 }}>
+                                      <Text size="xs" style={{ fontWeight: '600', color: '#92400E', marginBottom: '2px' }}>
+                                        List your variables
+                                      </Text>
+                                      <Text size="xs" style={{ color: '#92400E', lineHeight: 1.4 }}>
+                                        Add any variable names that this screen saves (via onDataUpdate). This helps track data flow across your onboarding.
+                                      </Text>
+                                    </div>
+                                    <button
+                                      onClick={() => setDismissedVarHints(prev => new Set([...prev, screenId]))}
+                                      style={{
+                                        background: 'none',
+                                        border: '1px solid #D97706',
+                                        borderRadius: theme.borderRadius.sm,
+                                        padding: '2px 8px',
+                                        fontSize: '10px',
+                                        fontWeight: '600',
+                                        color: '#92400E',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      Got it
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Add variable row */}
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: theme.spacing.sm }}>
+                                  <input
+                                    type="text"
+                                    id={`var-name-input-${screenId}`}
+                                    placeholder="variable_name"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const input = e.currentTarget
+                                        const select = input.parentElement?.querySelector('select') as HTMLSelectElement
+                                        addVariable(input.value, (select?.value || 'any') as any)
+                                        input.value = ''
+                                      }
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      minWidth: 0,
+                                      padding: '6px 8px',
+                                      border: `1px solid ${theme.colors.border}`,
+                                      borderRadius: theme.borderRadius.sm,
+                                      fontFamily: theme.fonts.mono,
+                                      fontSize: '12px',
+                                      backgroundColor: theme.colors.surface,
+                                      color: theme.colors.text,
+                                      boxSizing: 'border-box',
+                                    }}
+                                  />
+                                  <select
+                                    defaultValue="any"
+                                    style={{
+                                      padding: '6px 4px',
+                                      border: `1px solid ${theme.colors.border}`,
+                                      borderRadius: theme.borderRadius.sm,
+                                      fontSize: '11px',
+                                      backgroundColor: theme.colors.surface,
+                                      color: theme.colors.text,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <option value="any">any</option>
+                                    <option value="string">string</option>
+                                    <option value="number">number</option>
+                                    <option value="boolean">boolean</option>
+                                    <option value="list">list</option>
+                                  </select>
+                                  <button
+                                    onClick={() => {
+                                      const input = document.getElementById(`var-name-input-${screenId}`) as HTMLInputElement
+                                      const select = input?.parentElement?.querySelector('select') as HTMLSelectElement
+                                      if (input) {
+                                        addVariable(input.value, (select?.value || 'any') as any)
+                                        input.value = ''
+                                        input.focus()
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '6px 10px',
+                                      backgroundColor: theme.colors.primary,
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: theme.borderRadius.sm,
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+
+                                {/* Variable chips */}
+                                {currentVars.length > 0 && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {currentVars.map((v) => {
+                                      const typeColors: Record<string, { bg: string; color: string }> = {
+                                        string: { bg: '#F1F5F9', color: '#475569' },
+                                        number: { bg: '#DBEAFE', color: '#1D4ED8' },
+                                        boolean: { bg: '#FFF7ED', color: '#C2410C' },
+                                        list: { bg: '#F3E8FF', color: '#7C3AED' },
+                                        any: { bg: '#F1F5F9', color: '#64748B' },
+                                      }
+                                      const tc = typeColors[v.type] || typeColors.any
+
+                                      return (
+                                        <div
+                                          key={v.name}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '6px 10px',
+                                            backgroundColor: theme.colors.background,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: theme.borderRadius.sm,
+                                          }}
+                                        >
+                                          <code style={{
+                                            flex: 1,
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            color: theme.colors.text,
+                                          }}>
+                                            {v.name}
+                                          </code>
+                                          <span style={{
+                                            fontSize: '10px',
+                                            fontWeight: '600',
+                                            padding: '1px 6px',
+                                            borderRadius: '3px',
+                                            backgroundColor: tc.bg,
+                                            color: tc.color,
+                                          }}>
+                                            {v.type}
+                                          </span>
+                                          <button
+                                            onClick={() => removeVariable(v.name)}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              fontSize: '14px',
+                                              color: theme.colors.textMuted,
+                                              cursor: 'pointer',
+                                              padding: '0 2px',
+                                              lineHeight: 1,
+                                            }}
+                                          >
+                                            x
+                                          </button>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+
+                                <Text size="xs" style={{ color: theme.colors.textMuted, marginTop: theme.spacing.xs }}>
+                                  Must match the keys passed to onDataUpdate() in your component
+                                </Text>
+                              </>
+                            )
+                          })()}
+                        </PropertySection>
+
+                        <div style={{
+                          backgroundColor: '#FFF3CD',
+                          border: '1px solid #FFC107',
+                          borderRadius: theme.borderRadius.md,
+                          padding: theme.spacing.md,
+                        }}>
+                          <Text size="xs" style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>
+                            Developer Component
+                          </Text>
+                          <Text variant="muted" size="xs">
+                            This screen renders a React Native component registered in the SDK via the customComponents prop. It cannot be previewed in the dashboard.
+                          </Text>
+                        </div>
                       </div>
                     ) : selectedScreen !== null && screens[selectedScreen]?.type === 'noboard_screen' ? (
                       <div style={{
@@ -944,9 +1362,43 @@ export default function FlowBuilderPage() {
                         }
                       }}
                       onGeneratingChange={setAiGenerating}
+                      flowTheme={flowTheme}
                     />
                   )
                 )}
+                </div>
+
+                {/* Theme tab */}
+                <div style={{
+                  display: leftSidebarTab === 'theme' ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                }}>
+                  <ThemeEditor flowTheme={flowTheme} onChange={setFlowTheme} />
+                  <div style={{ padding: theme.spacing.md }}>
+                    <button
+                      onClick={() => setShowThemeModal(true)}
+                      style={{
+                        width: '100%',
+                        padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+                        backgroundColor: theme.colors.surface,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: theme.borderRadius.md,
+                        color: theme.colors.text,
+                        fontSize: theme.fontSizes.sm,
+                        fontFamily: theme.fonts.sans,
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = theme.colors.primary)}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = theme.colors.border)}
+                    >
+                      Open Full Editor
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -964,7 +1416,7 @@ export default function FlowBuilderPage() {
               <>
                 <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'center', transition: 'transform 0.2s', position: 'relative', zIndex: 1 }}>
                   <PhoneFrame device={DEVICES.find(d => d.id === selectedDevice)} orientation={orientation}>
-                    <ScreenPreview screen={screens[selectedScreen]} hiddenElements={hiddenElements} assets={assets} />
+                    <ScreenPreview screen={screens[selectedScreen]} hiddenElements={hiddenElements} assets={assets} flowTheme={flowTheme} />
                   </PhoneFrame>
                   {aiGenerating && (
                     <div style={{
@@ -1176,7 +1628,7 @@ export default function FlowBuilderPage() {
                 <Text variant="muted" size="sm">Select a screen</Text>
                 <Text variant="light" size="xs" style={{ marginTop: theme.spacing.xs }}>to edit properties</Text>
               </div>
-            ) : leftSidebarTab === 'ai-builder' ? (
+            ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
                 <ReferencePanel
                   screen={screens[selectedScreen]}
@@ -1201,48 +1653,27 @@ export default function FlowBuilderPage() {
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
                   <VariablesPanel screens={screens} selectedScreen={selectedScreen} />
                 </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.lg }}>
-                <ReferencePanel
-                  screen={screens[selectedScreen]}
-                  onUpdate={(updates) => updateScreen(selectedScreen, updates)}
-                />
                 <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
-                  <AssetsPanel
-                    assets={assets}
-                    onAddAsset={(asset) => setAssets([...assets, asset])}
-                    onRemoveAsset={(id) => setAssets(assets.filter(a => a.id !== id))}
-                    organizationId={config?.organization_id}
-                    flowId={params.id as string}
-                  />
-                </div>
-                <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: theme.spacing.md }}>
-                  <PropertiesPanel
-                    screen={screens[selectedScreen]}
-                    screenIndex={selectedScreen}
-                    selectedElement={selectedElement}
-                    onUpdate={(prop, value) => updateScreenProp(selectedScreen, prop, value)}
-                    onUpdateElement={(elementId, updates) => {
-                      const newScreens = [...screens]
-                      const screen = newScreens[selectedScreen]
-                      if (screen.elements) {
-                        const updateElementInTree = (elements: any[]): any[] => {
-                          return elements.map(el => {
-                            if (el.id === elementId) {
-                              return { ...el, ...updates }
-                            }
-                            if (el.children) {
-                              return { ...el, children: updateElementInTree(el.children) }
-                            }
-                            return el
-                          })
-                        }
-                        screen.elements = updateElementInTree(screen.elements)
-                        setScreens(newScreens)
-                      }
+                  <Text variant="light" size="xs" style={{ marginBottom: theme.spacing.sm }}>JSON Preview</Text>
+                  <pre
+                    style={{
+                      backgroundColor: theme.colors.background,
+                      padding: theme.spacing.md,
+                      borderRadius: theme.borderRadius.md,
+                      overflow: 'auto',
+                      maxHeight: '300px',
+                      fontSize: theme.fontSizes.xs,
+                      fontFamily: theme.fonts.mono,
+                      border: `1px solid ${theme.colors.border}`,
                     }}
-                  />
+                  >
+                    {JSON.stringify(
+                      screens[selectedScreen]?.type === 'noboard_screen'
+                        ? { layout: screens[selectedScreen]?.layout, elements: screens[selectedScreen]?.elements }
+                        : screens[selectedScreen]?.props,
+                      null, 2
+                    )}
+                  </pre>
                 </div>
               </div>
             )}
@@ -1313,18 +1744,198 @@ export default function FlowBuilderPage() {
         projectId={config?.project_id}
         organizationId={config?.organization_id}
       />
+
+      {/* Setup Modal */}
+      {showSetupModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(4px)',
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget && !setupParsing) setShowSetupModal(false) }}
+        >
+          <div style={{
+            width: 540,
+            maxHeight: '80vh',
+            backgroundColor: theme.colors.background,
+            borderRadius: theme.borderRadius.lg,
+            border: `1px solid ${theme.colors.border}`,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+              borderBottom: `1px solid ${theme.colors.border}`,
+            }}>
+              <div>
+                <Heading level={4} style={{ margin: 0 }}>Setup Current Onboarding</Heading>
+                <Text style={{ fontSize: '13px', color: theme.colors.textMuted, marginTop: '4px' }}>
+                  Paste the setup prompt generated by your AI
+                </Text>
+              </div>
+              <button
+                onClick={() => { if (!setupParsing) { setShowSetupModal(false); setSetupError('') } }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  color: theme.colors.textMuted,
+                  padding: '4px',
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: theme.spacing.lg, flex: 1, overflowY: 'auto' }}>
+              <textarea
+                value={setupPrompt}
+                onChange={(e) => { setSetupPrompt(e.target.value); setSetupError('') }}
+                placeholder={`SCREEN: ComponentName\nDESCRIPTION: What the screen does\nVARIABLES:\n- variable_name: type\n\nSCREEN: AnotherScreen\n...`}
+                disabled={setupParsing}
+                style={{
+                  width: '100%',
+                  minHeight: '240px',
+                  padding: theme.spacing.md,
+                  backgroundColor: theme.colors.surface,
+                  border: `1px solid ${setupError ? '#ef4444' : theme.colors.border}`,
+                  borderRadius: theme.borderRadius.md,
+                  color: theme.colors.text,
+                  fontSize: '13px',
+                  fontFamily: 'monospace',
+                  resize: 'vertical',
+                  outline: 'none',
+                  lineHeight: '1.5',
+                }}
+                onFocus={(e) => e.target.style.borderColor = setupError ? '#ef4444' : theme.colors.primary}
+                onBlur={(e) => e.target.style.borderColor = setupError ? '#ef4444' : theme.colors.border}
+              />
+
+              {setupError && (
+                <Text style={{ color: '#ef4444', fontSize: '13px', marginTop: theme.spacing.sm }}>
+                  {setupError}
+                </Text>
+              )}
+
+              <Text style={{ fontSize: '12px', color: theme.colors.textMuted, marginTop: theme.spacing.md }}>
+                Need the setup prompt?{' '}
+                <a
+                  href="/docs"
+                  target="_blank"
+                  style={{ color: theme.colors.primary, textDecoration: 'underline' }}
+                >
+                  Get it from the docs
+                </a>
+              </Text>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: theme.spacing.sm,
+              padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+              borderTop: `1px solid ${theme.colors.border}`,
+            }}>
+              <Button
+                variant="secondary"
+                onClick={() => { setShowSetupModal(false); setSetupError('') }}
+                disabled={setupParsing}
+                style={{ fontSize: '13px' }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSetupSubmit}
+                disabled={setupParsing || !setupPrompt.trim()}
+                style={{ fontSize: '13px', minWidth: '120px' }}
+              >
+                {setupParsing ? 'Parsing...' : 'Setup Screens'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Theme Modal */}
+      {showThemeModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(4px)',
+        }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowThemeModal(false) }}
+        >
+          <div style={{
+            width: 480,
+            maxHeight: '80vh',
+            backgroundColor: theme.colors.background,
+            borderRadius: theme.borderRadius.lg,
+            border: `1px solid ${theme.colors.border}`,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+              borderBottom: `1px solid ${theme.colors.border}`,
+            }}>
+              <Heading level={4} style={{ margin: 0 }}>Flow Theme</Heading>
+              <button
+                onClick={() => setShowThemeModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  color: theme.colors.textMuted,
+                  padding: '4px',
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <ThemeEditor flowTheme={flowTheme} onChange={setFlowTheme} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function ElementPropertiesEditor({ element, onUpdate }: { element: any; onUpdate: (updates: any) => void }) {
+function ElementPropertiesEditor({ element, onUpdate, flowTheme }: { element: any; onUpdate: (updates: any) => void; flowTheme?: FlowTheme }) {
   // Use specialized properties panels for stack elements
   if (element.type === 'vstack') {
-    return <VStackPropertiesPanel element={element} onUpdate={onUpdate} />
+    return <VStackPropertiesPanel element={element} onUpdate={onUpdate} flowTheme={flowTheme} />
   }
 
   if (element.type === 'hstack') {
-    return <HStackPropertiesPanel element={element} onUpdate={onUpdate} />
+    return <HStackPropertiesPanel element={element} onUpdate={onUpdate} flowTheme={flowTheme} />
   }
 
   if (element.type === 'zstack') {
@@ -1333,7 +1944,7 @@ function ElementPropertiesEditor({ element, onUpdate }: { element: any; onUpdate
 
   // Use TextPropertiesPanel for text, heading, and button elements
   if (element.type === 'text' || element.type === 'heading' || element.type === 'button') {
-    return <TextPropertiesPanel element={element} onUpdate={onUpdate} />
+    return <TextPropertiesPanel element={element} onUpdate={onUpdate} flowTheme={flowTheme} />
   }
 
   // Use ImagePropertiesPanel for image elements
@@ -1356,7 +1967,7 @@ function ElementPropertiesEditor({ element, onUpdate }: { element: any; onUpdate
 
   // Input elements
   if (element.type === 'input') {
-    return <InputPropertiesPanel element={element} onUpdate={onUpdate} />
+    return <InputPropertiesPanel element={element} onUpdate={onUpdate} flowTheme={flowTheme} />
   }
 
   if (element.type === 'checkbox') {
@@ -1385,7 +1996,7 @@ function ElementPropertiesEditor({ element, onUpdate }: { element: any; onUpdate
   }
 
   if (element.type === 'divider') {
-    return <DividerPropertiesPanel element={element} onUpdate={onUpdate} />
+    return <DividerPropertiesPanel element={element} onUpdate={onUpdate} flowTheme={flowTheme} />
   }
 
   const updateStyle = (key: string, value: any) => {
@@ -2469,7 +3080,7 @@ function ReferencePanel({ screen, onUpdate }: {
   )
 }
 
-// ─── Assets Panel (shown in right sidebar, all tabs) ───
+// ─── Assets Panel (compact button + modal) ───
 
 const ASSET_TYPE_CONFIG = {
   image: { icon: '🖼️', accept: 'image/*', label: 'Image' },
@@ -2485,21 +3096,19 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId
   flowId: string
 }) {
   const { toast } = useToast()
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const [newAssetType, setNewAssetType] = useState<'image' | 'video' | 'lottie'>('image')
   const [newAssetName, setNewAssetName] = useState('')
   const [newAssetFile, setNewAssetFile] = useState<File | null>(null)
   const [newAssetPreview, setNewAssetPreview] = useState<string | null>(null)
   const [newAssetFileName, setNewAssetFileName] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [viewingAsset, setViewingAsset] = useState<Asset | null>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setNewAssetFileName(file.name)
     setNewAssetFile(file)
-    // Generate preview for images only
     if (file.type.startsWith('image/')) {
       const reader = new FileReader()
       reader.onload = () => setNewAssetPreview(reader.result as string)
@@ -2557,7 +3166,6 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId
       setNewAssetFile(null)
       setNewAssetPreview(null)
       setNewAssetFileName('')
-      setShowAddForm(false)
     } catch (err: any) {
       toast(`Upload failed: ${err.message}`, 'error')
     } finally {
@@ -2566,7 +3174,6 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId
   }
 
   const handleRemove = async (asset: Asset) => {
-    // Delete from Supabase Storage if it's a storage URL
     if (asset.data.includes('/storage/v1/object/public/assets/')) {
       try {
         const supabase = createClient()
@@ -2582,7 +3189,6 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId
   }
 
   const formatSize = (dataUrl: string) => {
-    // For URLs (not base64), just show "Stored"
     if (dataUrl.startsWith('http')) return 'Cloud'
     const bytes = Math.round((dataUrl.length * 3) / 4)
     if (bytes < 1024) return `${bytes} B`
@@ -2590,329 +3196,326 @@ function AssetsPanel({ assets, onAddAsset, onRemoveAsset, organizationId, flowId
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  const resetForm = () => {
+    setNewAssetName('')
+    setNewAssetFile(null)
+    setNewAssetPreview(null)
+    setNewAssetFileName('')
+    setNewAssetType('image')
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.sm }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text size="sm" style={{ fontWeight: '600' }}>
-          Assets{assets.length > 0 ? ` (${assets.length})` : ''}
-        </Text>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{
-            padding: `2px ${theme.spacing.sm}`,
-            fontSize: '12px',
-            fontWeight: '500',
-            backgroundColor: showAddForm ? theme.colors.border : theme.colors.primary,
-            color: showAddForm ? theme.colors.text : '#fff',
-            border: 'none',
-            borderRadius: theme.borderRadius.sm,
-            cursor: 'pointer',
-          }}
-        >
-          {showAddForm ? 'Cancel' : '+ Add'}
-        </button>
-      </div>
-
-      {/* Add Asset Form */}
-      {showAddForm && (
-        <div style={{
-          border: `1px solid ${theme.colors.primaryMuted}`,
-          borderRadius: theme.borderRadius.md,
-          padding: theme.spacing.sm,
-          backgroundColor: theme.colors.background,
+    <>
+      {/* Compact trigger button */}
+      <button
+        onClick={() => setIsOpen(true)}
+        style={{
+          width: '100%',
           display: 'flex',
-          flexDirection: 'column',
-          gap: theme.spacing.sm,
-        }}>
-          {/* Type selector */}
-          <div style={{ display: 'flex', gap: '4px' }}>
-            {(Object.keys(ASSET_TYPE_CONFIG) as Array<'image' | 'video' | 'lottie'>).map((type) => (
-              <button
-                key={type}
-                onClick={() => {
-                  setNewAssetType(type)
-                  setNewAssetFile(null)
-                  setNewAssetPreview(null)
-                  setNewAssetFileName('')
-                }}
-                style={{
-                  flex: 1,
-                  padding: `4px ${theme.spacing.xs}`,
-                  fontSize: '11px',
-                  fontWeight: newAssetType === type ? '600' : '400',
-                  backgroundColor: newAssetType === type ? theme.colors.primary : 'transparent',
-                  color: newAssetType === type ? '#fff' : theme.colors.textMuted,
-                  border: `1px solid ${newAssetType === type ? theme.colors.primary : theme.colors.border}`,
-                  borderRadius: theme.borderRadius.sm,
-                  cursor: 'pointer',
-                }}
-              >
-                {ASSET_TYPE_CONFIG[type].icon} {ASSET_TYPE_CONFIG[type].label}
-              </button>
-            ))}
-          </div>
-
-          {/* Name input */}
-          <input
-            type="text"
-            placeholder="Asset name (e.g. hero_image)"
-            value={newAssetName}
-            onChange={(e) => setNewAssetName(e.target.value)}
-            style={{
-              width: '100%',
-              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-              fontSize: '12px',
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: theme.borderRadius.sm,
-              backgroundColor: theme.colors.surface,
-              color: theme.colors.text,
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-
-          {/* File upload */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                fontSize: '12px',
-                textAlign: 'center',
-                border: `1px dashed ${theme.colors.border}`,
-                borderRadius: theme.borderRadius.sm,
-                cursor: 'pointer',
-                color: theme.colors.textMuted,
-                backgroundColor: theme.colors.background,
-              }}
-            >
-              {newAssetFileName || 'Choose file...'}
-              <input
-                type="file"
-                accept={ASSET_TYPE_CONFIG[newAssetType].accept}
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-            </label>
-          </div>
-
-          {/* Preview for images */}
-          {newAssetPreview && newAssetType === 'image' && (
-            <img
-              src={newAssetPreview}
-              alt="Preview"
-              style={{
-                width: '100%',
-                height: '60px',
-                objectFit: 'cover',
-                borderRadius: theme.borderRadius.sm,
-                border: `1px solid ${theme.colors.border}`,
-              }}
-            />
-          )}
-
-          {/* Add button */}
-          <button
-            onClick={handleAdd}
-            disabled={!newAssetName.trim() || !newAssetFile || uploading}
-            style={{
-              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-              fontSize: '12px',
-              fontWeight: '500',
-              backgroundColor: (!newAssetName.trim() || !newAssetFile || uploading) ? theme.colors.border : theme.colors.primary,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: `${theme.spacing.sm} ${theme.spacing.md}`,
+          backgroundColor: theme.colors.background,
+          border: `1px solid ${theme.colors.border}`,
+          borderRadius: theme.borderRadius.md,
+          cursor: 'pointer',
+          transition: 'border-color 0.15s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.borderColor = theme.colors.primary}
+        onMouseLeave={(e) => e.currentTarget.style.borderColor = theme.colors.border}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
+          <span style={{ fontSize: '16px' }}>📦</span>
+          <Text size="sm" style={{ fontWeight: '600' }}>Assets</Text>
+          {assets.length > 0 && (
+            <span style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              backgroundColor: theme.colors.primary,
               color: '#fff',
-              border: 'none',
-              borderRadius: theme.borderRadius.sm,
-              cursor: (!newAssetName.trim() || !newAssetFile || uploading) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {uploading ? 'Uploading...' : 'Add Asset'}
-          </button>
-        </div>
-      )}
-
-      {/* Asset List */}
-      {assets.length === 0 && !showAddForm && (
-        <div style={{ padding: theme.spacing.md, textAlign: 'center' }}>
-          <div style={{ fontSize: '24px', marginBottom: theme.spacing.xs, opacity: 0.3 }}>📦</div>
-          <Text variant="muted" size="xs">
-            No assets yet. Add images, videos, or Lottie files to reference by name.
-          </Text>
-        </div>
-      )}
-
-      {assets.map((asset) => (
-        <div
-          key={asset.id}
-          style={{
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: theme.borderRadius.md,
-            padding: theme.spacing.sm,
-            backgroundColor: theme.colors.background,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
-              <span style={{ fontSize: '12px' }}>{ASSET_TYPE_CONFIG[asset.type].icon}</span>
-              <code style={{
-                fontSize: '12px',
-                fontWeight: '600',
-                color: theme.colors.text,
-                backgroundColor: theme.colors.border + '60',
-                padding: '1px 6px',
-                borderRadius: '4px',
-              }}>
-                {asset.name}
-              </code>
-            </div>
-            <button
-              onClick={() => handleRemove(asset)}
-              style={{
-                padding: '2px 6px',
-                fontSize: '10px',
-                backgroundColor: 'transparent',
-                color: theme.colors.textMuted,
-                border: 'none',
-                cursor: 'pointer',
-                borderRadius: '4px',
-              }}
-              title="Remove asset"
-            >
-              ✕
-            </button>
-          </div>
-          <div style={{ fontSize: '10px', color: theme.colors.textMuted, marginBottom: asset.type === 'image' ? '4px' : '0' }}>
-            {ASSET_TYPE_CONFIG[asset.type].label} &middot; {formatSize(asset.data)}
-          </div>
-          {asset.type === 'image' && (
-            <div
-              onClick={() => setViewingAsset(asset)}
-              style={{
-                position: 'relative',
-                width: '100%',
-                height: '48px',
-                borderRadius: theme.borderRadius.sm,
-                marginTop: '2px',
-                cursor: 'pointer',
-                overflow: 'hidden',
-              }}
-              onMouseEnter={(e) => {
-                const overlay = e.currentTarget.querySelector('.hover-overlay') as HTMLElement
-                if (overlay) overlay.style.opacity = '1'
-              }}
-              onMouseLeave={(e) => {
-                const overlay = e.currentTarget.querySelector('.hover-overlay') as HTMLElement
-                if (overlay) overlay.style.opacity = '0'
-              }}
-            >
-              <img
-                src={asset.data}
-                alt={asset.name}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borderRadius.sm,
-                }}
-              />
-              <div
-                className="hover-overlay"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: 0,
-                  transition: 'opacity 0.2s',
-                  borderRadius: theme.borderRadius.sm,
-                }}
-              >
-                <span style={{ color: '#fff', fontSize: '11px', fontWeight: '500' }}>
-                  View Full Size
-                </span>
-              </div>
-            </div>
+              padding: '1px 7px',
+              borderRadius: '10px',
+            }}>
+              {assets.length}
+            </span>
           )}
         </div>
-      ))}
+        <span style={{ fontSize: '12px', color: theme.colors.textMuted }}>Manage</span>
+      </button>
 
-      {/* View Asset Modal */}
-      {viewingAsset && (
+      {/* Modal */}
+      {isOpen && (
         <div
-          onClick={() => setViewingAsset(null)}
+          onClick={() => setIsOpen(false)}
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 10000,
             padding: theme.spacing.xl,
-            cursor: 'pointer',
           }}
         >
-          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
-            <img
-              src={viewingAsset.data}
-              alt={viewingAsset.name}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '90vh',
-                objectFit: 'contain',
-                borderRadius: theme.borderRadius.md,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <div style={{
-              position: 'absolute',
-              top: '-40px',
-              left: 0,
-              right: 0,
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: theme.borderRadius.lg,
+              width: '100%',
+              maxWidth: 560,
+              maxHeight: '80vh',
               display: 'flex',
-              justifyContent: 'space-between',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+              borderBottom: `1px solid ${theme.colors.border}`,
             }}>
-              <code style={{
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#fff',
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                padding: '4px 12px',
-                borderRadius: '4px',
-              }}>
-                {viewingAsset.name}
-              </code>
+              <Heading level={4} style={{ margin: 0 }}>Assets ({assets.length})</Heading>
               <button
-                onClick={() => setViewingAsset(null)}
+                onClick={() => setIsOpen(false)}
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  color: '#fff',
+                  padding: '4px 10px',
+                  fontSize: '16px',
+                  backgroundColor: 'transparent',
+                  color: theme.colors.textMuted,
                   border: 'none',
-                  borderRadius: '4px',
                   cursor: 'pointer',
+                  borderRadius: theme.borderRadius.sm,
                 }}
               >
-                Close
+                ✕
               </button>
+            </div>
+
+            {/* Add Asset Form — always visible at top */}
+            <div style={{
+              padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+              borderBottom: `1px solid ${theme.colors.border}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: theme.spacing.sm,
+            }}>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {(Object.keys(ASSET_TYPE_CONFIG) as Array<'image' | 'video' | 'lottie'>).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => {
+                      setNewAssetType(type)
+                      setNewAssetFile(null)
+                      setNewAssetPreview(null)
+                      setNewAssetFileName('')
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: `6px ${theme.spacing.sm}`,
+                      fontSize: '12px',
+                      fontWeight: newAssetType === type ? '600' : '400',
+                      backgroundColor: newAssetType === type ? theme.colors.primary : 'transparent',
+                      color: newAssetType === type ? '#fff' : theme.colors.textMuted,
+                      border: `1px solid ${newAssetType === type ? theme.colors.primary : theme.colors.border}`,
+                      borderRadius: theme.borderRadius.sm,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {ASSET_TYPE_CONFIG[type].icon} {ASSET_TYPE_CONFIG[type].label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: theme.spacing.sm }}>
+                <input
+                  type="text"
+                  placeholder="Asset name (e.g. hero_image)"
+                  value={newAssetName}
+                  onChange={(e) => setNewAssetName(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                    fontSize: '13px',
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: theme.borderRadius.sm,
+                    backgroundColor: theme.colors.background,
+                    color: theme.colors.text,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                    fontSize: '12px',
+                    border: `1px dashed ${theme.colors.border}`,
+                    borderRadius: theme.borderRadius.sm,
+                    cursor: 'pointer',
+                    color: newAssetFileName ? theme.colors.text : theme.colors.textMuted,
+                    backgroundColor: theme.colors.background,
+                    whiteSpace: 'nowrap',
+                    maxWidth: 160,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {newAssetFileName || 'Choose file...'}
+                  <input
+                    type="file"
+                    accept={ASSET_TYPE_CONFIG[newAssetType].accept}
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                <button
+                  onClick={handleAdd}
+                  disabled={!newAssetName.trim() || !newAssetFile || uploading}
+                  style={{
+                    padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    backgroundColor: (!newAssetName.trim() || !newAssetFile || uploading) ? theme.colors.border : theme.colors.primary,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: theme.borderRadius.sm,
+                    cursor: (!newAssetName.trim() || !newAssetFile || uploading) ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {uploading ? 'Uploading...' : '+ Add'}
+                </button>
+              </div>
+              {newAssetPreview && newAssetType === 'image' && (
+                <img
+                  src={newAssetPreview}
+                  alt="Preview"
+                  style={{
+                    width: '100%',
+                    height: '60px',
+                    objectFit: 'cover',
+                    borderRadius: theme.borderRadius.sm,
+                    border: `1px solid ${theme.colors.border}`,
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Asset Grid */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: theme.spacing.lg,
+            }}>
+              {assets.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: `${theme.spacing['2xl']} 0` }}>
+                  <div style={{ fontSize: '40px', marginBottom: theme.spacing.sm, opacity: 0.3 }}>📦</div>
+                  <Text variant="muted" size="sm">No assets yet</Text>
+                  <Text variant="light" size="xs" style={{ marginTop: theme.spacing.xs }}>
+                    Add images, videos, or Lottie files above
+                  </Text>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: theme.spacing.md,
+                }}>
+                  {assets.map((asset) => (
+                    <div
+                      key={asset.id}
+                      style={{
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: theme.borderRadius.md,
+                        overflow: 'hidden',
+                        backgroundColor: theme.colors.background,
+                        position: 'relative',
+                      }}
+                    >
+                      {/* Thumbnail */}
+                      <div style={{
+                        width: '100%',
+                        height: 100,
+                        backgroundColor: theme.colors.border + '40',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}>
+                        {asset.type === 'image' ? (
+                          <img
+                            src={asset.data}
+                            alt={asset.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '32px', opacity: 0.5 }}>
+                            {ASSET_TYPE_CONFIG[asset.type].icon}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div style={{ padding: `${theme.spacing.xs} ${theme.spacing.sm}` }}>
+                        <div style={{
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          color: theme.colors.text,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {asset.name}
+                        </div>
+                        <div style={{ fontSize: '10px', color: theme.colors.textMuted }}>
+                          {ASSET_TYPE_CONFIG[asset.type].label} &middot; {formatSize(asset.data)}
+                        </div>
+                      </div>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={() => handleRemove(asset)}
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          width: 22,
+                          height: 22,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '11px',
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.15s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Remove asset"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -2957,7 +3560,12 @@ function ImageSlotsIndicator({ elements, assets, onSelectAsset }: {
   const slots = collectImageSlots(elements)
 
   if (slots.length === 0) {
-    return null
+    return (
+      <div>
+        <Text size="sm" style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>Media Slots</Text>
+        <Text variant="muted" size="xs">No media slots yet. Use the AI to add image, video, or lottie elements.</Text>
+      </div>
+    )
   }
 
   const getAssetIcon = (type: string) => {
@@ -3111,6 +3719,8 @@ interface VariableInfo {
   values: string[]      // possible values from set_variable actions
   setByScreens: number[] // screen indices that set this variable
   readByScreens: number[] // screen indices that read this variable
+  source: 'ai' | 'custom' | 'both' // whether set by AI screen, custom screen, or both
+  varType?: 'string' | 'number' | 'boolean' | 'list' | 'any'
 }
 
 function collectFlowVariables(screens: Screen[]): VariableInfo[] {
@@ -3118,7 +3728,7 @@ function collectFlowVariables(screens: Screen[]): VariableInfo[] {
 
   const ensureVar = (name: string) => {
     if (!varMap[name]) {
-      varMap[name] = { name, values: [], setByScreens: [], readByScreens: [] }
+      varMap[name] = { name, values: [], setByScreens: [], readByScreens: [], source: 'ai' }
     }
     return varMap[name]
   }
@@ -3140,14 +3750,18 @@ function collectFlowVariables(screens: Screen[]): VariableInfo[] {
         }
       }
 
-      // Check text props for {variable_name} templates
-      if (el.props?.text && typeof el.props.text === 'string') {
-        const matches = el.props.text.match(/\{(\w+(?:\.\w+)*)\}/g)
-        if (matches) {
-          for (const match of matches) {
-            const varName = match.slice(1, -1)
-            const info = ensureVar(varName)
-            if (!info.readByScreens.includes(screenIndex)) info.readByScreens.push(screenIndex)
+      // Check all string props for {variable_name} templates
+      if (el.props) {
+        for (const propValue of Object.values(el.props)) {
+          if (typeof propValue === 'string') {
+            const matches = propValue.match(/\{(\w+(?:\.\w+)*)\}/g)
+            if (matches) {
+              for (const match of matches) {
+                const varName = match.slice(1, -1)
+                const info = ensureVar(varName)
+                if (!info.readByScreens.includes(screenIndex)) info.readByScreens.push(screenIndex)
+              }
+            }
           }
         }
       }
@@ -3189,14 +3803,40 @@ function collectFlowVariables(screens: Screen[]): VariableInfo[] {
   screens.forEach((screen, idx) => {
     // Add custom screen variables
     if (screen.type === 'custom_screen' && screen.custom_variables) {
-      screen.custom_variables.forEach(varName => {
-        const info = ensureVar(varName)
+      screen.custom_variables.forEach(v => {
+        const info = ensureVar(v.name)
         if (!info.setByScreens.includes(idx)) info.setByScreens.push(idx)
+        if (v.type) info.varType = v.type
+        // Mark source
+        if (info.source === 'ai') info.source = 'custom'
+        else if (info.source !== 'custom') info.source = 'both'
       })
     }
 
-    if (screen.elements) walkElements(screen.elements, idx)
+    if (screen.elements) {
+      // Track which vars existed before walking this screen's elements
+      const existingVars = new Set(Object.keys(varMap))
+      walkElements(screen.elements, idx)
+      // Any new vars added by walkElements come from AI screen elements (set_variable actions)
+      if (screen.type === 'custom_screen') {
+        // If a custom screen has elements with set_variable, still mark as custom
+        for (const key of Object.keys(varMap)) {
+          if (!existingVars.has(key)) {
+            varMap[key].source = varMap[key].source === 'ai' ? 'custom' : 'both'
+          }
+        }
+      }
+    }
   })
+
+  // Second pass: mark vars set by both AI and custom screens
+  for (const v of Object.values(varMap)) {
+    const setByAI = v.setByScreens.some(i => screens[i]?.type === 'noboard_screen')
+    const setByCustom = v.setByScreens.some(i => screens[i]?.type === 'custom_screen')
+    if (setByAI && setByCustom) v.source = 'both'
+    else if (setByCustom) v.source = 'custom'
+    else v.source = 'ai'
+  }
 
   return Object.values(varMap).sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -3216,26 +3856,68 @@ function VariablesPanel({ screens, selectedScreen }: { screens: Screen[]; select
     )
   }
 
+  const VAR_COLORS = {
+    set: { bg: '#fef3c7', border: '#f59e0b', dot: '#f59e0b', label: 'Set by this screen' },
+    read: { bg: '#dbeafe', border: '#3b82f6', dot: '#3b82f6', label: 'Used by this screen' },
+    both: { bg: '#dcfce7', border: '#22c55e', dot: '#22c55e', label: 'Set & used by this screen' },
+    other: { bg: theme.colors.background, border: theme.colors.border, dot: theme.colors.textMuted, label: 'From other screens' },
+  }
+
+  const getVarColor = (v: { setByScreens: number[]; readByScreens: number[] }) => {
+    const isSet = v.setByScreens.includes(selectedScreen)
+    const isRead = v.readByScreens.includes(selectedScreen)
+    if (isSet && isRead) return VAR_COLORS.both
+    if (isSet) return VAR_COLORS.set
+    if (isRead) return VAR_COLORS.read
+    return VAR_COLORS.other
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
       <div style={{ marginBottom: theme.spacing.xs }}>
         <Text size="sm" style={{ fontWeight: '600' }}>Variables ({variables.length})</Text>
       </div>
+
+      {/* Color legend */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '6px',
+        marginBottom: theme.spacing.sm,
+        padding: theme.spacing.xs,
+        backgroundColor: theme.colors.background,
+        borderRadius: theme.borderRadius.sm,
+        border: `1px solid ${theme.colors.border}`,
+      }}>
+        {[VAR_COLORS.set, VAR_COLORS.read, VAR_COLORS.both, VAR_COLORS.other].map((c) => (
+          <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: c.dot,
+              flexShrink: 0,
+            }} />
+            <span style={{ fontSize: '9px', color: theme.colors.textMuted, whiteSpace: 'nowrap' }}>{c.label}</span>
+          </div>
+        ))}
+      </div>
+
       {variables.map((v) => {
-        const isSetByCurrentScreen = v.setByScreens.includes(selectedScreen)
-        const isReadByCurrentScreen = v.readByScreens.includes(selectedScreen)
+        const color = getVarColor(v)
 
         return (
           <div
             key={v.name}
             style={{
-              border: `1px solid ${(isSetByCurrentScreen || isReadByCurrentScreen) ? theme.colors.primary + '40' : theme.colors.border}`,
+              border: `1px solid ${color.border}40`,
+              borderLeft: `3px solid ${color.dot}`,
               borderRadius: theme.borderRadius.md,
               padding: theme.spacing.sm,
-              backgroundColor: isSetByCurrentScreen ? '#fff7ed' : isReadByCurrentScreen ? '#eff6ff' : theme.colors.background,
+              backgroundColor: color.bg,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs, marginBottom: '2px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
               <code style={{
                 fontSize: '12px',
                 fontWeight: '600',
@@ -3243,9 +3925,51 @@ function VariablesPanel({ screens, selectedScreen }: { screens: Screen[]; select
                 backgroundColor: theme.colors.border + '60',
                 padding: '1px 6px',
                 borderRadius: '4px',
+                flex: 1,
               }}>
                 {v.name}
               </code>
+              <span style={{
+                fontSize: '9px',
+                fontWeight: '600',
+                padding: '1px 6px',
+                borderRadius: '3px',
+                whiteSpace: 'nowrap',
+                ...(v.source === 'ai' ? {
+                  color: '#7C3AED',
+                  backgroundColor: '#EDE9FE',
+                } : v.source === 'custom' ? {
+                  color: '#0369A1',
+                  backgroundColor: '#E0F2FE',
+                } : {
+                  color: '#15803D',
+                  backgroundColor: '#DCFCE7',
+                }),
+              }}>
+                {v.source === 'ai' ? 'AI Screen' : v.source === 'custom' ? 'Custom' : 'AI + Custom'}
+              </span>
+              {v.varType && v.varType !== 'any' && (() => {
+                const typeColors: Record<string, { bg: string; color: string }> = {
+                  string: { bg: '#F1F5F9', color: '#475569' },
+                  number: { bg: '#DBEAFE', color: '#1D4ED8' },
+                  boolean: { bg: '#FFF7ED', color: '#C2410C' },
+                  list: { bg: '#F3E8FF', color: '#7C3AED' },
+                }
+                const tc = typeColors[v.varType!] || { bg: '#F1F5F9', color: '#64748B' }
+                return (
+                  <span style={{
+                    fontSize: '9px',
+                    fontWeight: '600',
+                    padding: '1px 6px',
+                    borderRadius: '3px',
+                    whiteSpace: 'nowrap',
+                    backgroundColor: tc.bg,
+                    color: tc.color,
+                  }}>
+                    {v.varType}
+                  </span>
+                )
+              })()}
             </div>
 
             {v.values.length > 0 && (
@@ -3287,7 +4011,7 @@ function VariablesPanel({ screens, selectedScreen }: { screens: Screen[]; select
   )
 }
 
-function PropertiesPanel({ screen, screenIndex, selectedElement, onUpdate, onUpdateElement }: { screen: Screen; screenIndex: number; selectedElement: string | null; onUpdate: (prop: string, value: any) => void; onUpdateElement: (elementId: string, updates: any) => void }) {
+function PropertiesPanel({ screen, screenIndex, selectedElement, onUpdate, onUpdateElement, flowTheme }: { screen: Screen; screenIndex: number; selectedElement: string | null; onUpdate: (prop: string, value: any) => void; onUpdateElement: (elementId: string, updates: any) => void; flowTheme?: FlowTheme }) {
   // Find the selected element in the tree
   const findElement = (elements: any[], id: string): any | null => {
     for (const el of elements) {
@@ -3304,7 +4028,7 @@ function PropertiesPanel({ screen, screenIndex, selectedElement, onUpdate, onUpd
 
   // If an element is selected, show element properties
   if (element) {
-    return <ElementPropertiesEditor element={element} onUpdate={(updates) => onUpdateElement(element.id, updates)} />
+    return <ElementPropertiesEditor element={element} onUpdate={(updates) => onUpdateElement(element.id, updates)} flowTheme={flowTheme} />
   }
 
   // Otherwise show screen properties
@@ -3368,92 +4092,7 @@ function PropertiesPanel({ screen, screenIndex, selectedElement, onUpdate, onUpd
         </>
       )}
 
-      {/* Custom Screen Properties */}
-      {screen.type === 'custom_screen' && (
-        <>
-          <PropertySection title="Custom Component">
-            <PropertyField label="Component Name">
-              <input
-                type="text"
-                value={screen.custom_component_name || ''}
-                onChange={(e) => {
-                  const newScreen = { ...screen, custom_component_name: e.target.value }
-                  onUpdate('_full_screen', newScreen)
-                }}
-                placeholder="e.g., MealTrackerScreen"
-                style={{
-                  width: '100%',
-                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.fontSizes.sm,
-                }}
-              />
-            </PropertyField>
-            <PropertyField label="Description">
-              <textarea
-                value={screen.custom_description || ''}
-                onChange={(e) => {
-                  const newScreen = { ...screen, custom_description: e.target.value }
-                  onUpdate('_full_screen', newScreen)
-                }}
-                rows={3}
-                placeholder="Describe what this component does..."
-                style={{
-                  width: '100%',
-                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontFamily: theme.fonts.sans,
-                  fontSize: theme.fontSizes.sm,
-                  resize: 'vertical',
-                }}
-              />
-            </PropertyField>
-            <PropertyField label="Variables Provided">
-              <input
-                type="text"
-                value={(screen.custom_variables || []).join(', ')}
-                onChange={(e) => {
-                  // Parse comma-separated variable names
-                  const variablesInput = e.target.value
-                  const variablesList = variablesInput
-                    .split(',')
-                    .map(v => v.trim())
-                    .filter(v => v.length > 0)
-                  const newScreen = { ...screen, custom_variables: variablesList.length > 0 ? variablesList : undefined }
-                  onUpdate('_full_screen', newScreen)
-                }}
-                placeholder="e.g., height_cm, weight_kg, heightUnit"
-                style={{
-                  width: '100%',
-                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontFamily: theme.fonts.mono,
-                  fontSize: theme.fontSizes.sm,
-                }}
-              />
-              <Text size="xs" style={{ color: theme.colors.textMuted, marginTop: theme.spacing.xs }}>
-                Comma-separated list of variable names this component provides (e.g., height_cm, weight_kg)
-              </Text>
-            </PropertyField>
-          </PropertySection>
-          <div style={{
-            backgroundColor: '#FFF3CD',
-            border: '1px solid #FFC107',
-            borderRadius: theme.borderRadius.md,
-            padding: theme.spacing.md,
-          }}>
-            <Text size="xs" style={{ fontWeight: '600', marginBottom: theme.spacing.xs }}>
-              Developer Component
-            </Text>
-            <Text variant="muted" size="xs">
-              This screen renders a React Native component registered in the SDK via the customComponents prop. It cannot be previewed in the dashboard.
-            </Text>
-          </div>
-        </>
-      )}
+      {/* Custom Screen — properties are in left Layout tab */}
 
       {/* JSON Editor */}
       <div>
@@ -3665,7 +4304,8 @@ function AIChatBuilder({
   onScreenUpdate,
   onGeneratingChange,
   flowId,
-  onCreditsUpdate
+  onCreditsUpdate,
+  flowTheme
 }: {
   selectedScreen: number | null
   screens: Screen[]
@@ -3676,6 +4316,7 @@ function AIChatBuilder({
   onGeneratingChange?: (generating: boolean) => void
   flowId: string | null
   onCreditsUpdate?: () => void
+  flowTheme?: FlowTheme
 }) {
   const [inputText, setInputText] = useState('')
   const [pendingImages, setPendingImages] = useState<string[]>([])
@@ -3880,14 +4521,21 @@ function AIChatBuilder({
             name: v.name,
             setByScreens: v.setByScreens,
             values: v.values,
+            varType: v.varType,
           })),
-          conversationHistory: messages.map(msg => ({
-            role: msg.role,
-            content: msg.content,
-            // Don't send elements in history to save tokens
-          })),
+          conversationHistory: messages.map((msg, idx) => {
+            const isRecent = idx >= messages.length - 4
+            return {
+              role: msg.role,
+              content: msg.content,
+              // Include elements JSON for recent messages so AI has context on recent changes
+              // Strip from older messages to save tokens
+              ...(isRecent && msg.elements ? { elements: stripBase64FromElements(msg.elements) } : {}),
+            }
+          }),
           flowId: flowId,
           screenId: currentScreen?.id || null,
+          flowTheme: flowTheme || null,
         }),
       })
 

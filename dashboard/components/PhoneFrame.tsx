@@ -1,5 +1,3 @@
-import { theme } from '@/lib/theme'
-
 interface Device {
   id: string
   name: string

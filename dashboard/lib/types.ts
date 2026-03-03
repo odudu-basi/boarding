@@ -40,6 +40,42 @@ export interface Asset {
   createdAt: number
 }
 
+// ─── Flow Theme Types ───
+
+export interface FlowTheme {
+  colors: {
+    primary: string
+    secondary: string
+    background: string
+    surface: string
+    text: string
+    textMuted: string
+    accent: string
+    success: string
+    error: string
+  }
+  typography: {
+    heading: { fontSize: number; fontWeight: string }
+    body: { fontSize: number; fontWeight: string }
+    fontFamily?: string
+  }
+  button: {
+    backgroundColor: string
+    textColor: string
+    borderRadius: number
+    minHeight: number
+  }
+  input: {
+    borderColor: string
+    borderRadius: number
+    backgroundColor: string
+  }
+  general: {
+    borderRadius: number
+    spacing: number
+  }
+}
+
 export interface OnboardingConfig {
   id: string
   organization_id: string
@@ -53,6 +89,7 @@ export interface OnboardingConfig {
     version: string
     screens: Screen[]
     assets?: Asset[]
+    theme?: FlowTheme
   }
   created_at: string
   updated_at: string
@@ -70,7 +107,7 @@ export interface Screen {
   // For custom_screen type (developer components)
   custom_component_name?: string
   custom_description?: string
-  custom_variables?: string[]  // Variable names provided by this custom screen
+  custom_variables?: { name: string; type: 'string' | 'number' | 'boolean' | 'list' | 'any' }[]
   // Visibility
   hidden?: boolean
   // Reference image for AI builder (design mockup/inspiration)
@@ -270,6 +307,7 @@ export interface ExperimentVariant {
   weight: number
   config_id: string        // references an onboarding_configs.id
   config_name?: string     // denormalized for display
+  screens?: any[]          // snapshot of screens from the source flow
 }
 
 export interface Experiment {

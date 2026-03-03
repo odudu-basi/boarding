@@ -21,6 +21,8 @@ export type {
   ConditionalDestination,
   ConditionalRoutes,
   ElementConditions,
+  // Theme types
+  FlowTheme,
 } from './types';
 
 // Components

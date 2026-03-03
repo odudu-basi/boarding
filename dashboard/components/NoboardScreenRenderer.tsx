@@ -1,5 +1,6 @@
-import { Element, ElementStyle, ElementPosition, ElementAction, Asset } from '@/lib/types'
+import { Element, ElementStyle, ElementPosition, ElementAction, Asset, FlowTheme } from '@/lib/types'
 import { resolveTemplate, evaluateCondition } from '@/lib/variableUtils'
+import { resolveThemeTokens } from '@/lib/themeResolver'
 import { theme } from '@/lib/theme'
 import React, { useState, useCallback } from 'react'
 
@@ -10,6 +11,7 @@ interface NoboardScreenRendererProps {
   variables?: Record<string, any>
   onSetVariable?: (name: string, value: any) => void
   assets?: Asset[]
+  flowTheme?: FlowTheme
 }
 
 // Error boundary to catch rendering crashes and show useful error instead of blank screen
@@ -43,7 +45,7 @@ class RenderErrorBoundary extends React.Component<
   }
 }
 
-export function NoboardScreenRenderer({ elements, backgroundColor = '#FFFFFF', hiddenElements = new Set(), variables = {}, onSetVariable, assets = [] }: NoboardScreenRendererProps) {
+export function NoboardScreenRenderer({ elements, backgroundColor = '#FFFFFF', hiddenElements = new Set(), variables = {}, onSetVariable, assets = [], flowTheme }: NoboardScreenRendererProps) {
   // Resolve asset:name references to actual data URLs
   const resolveAssetUrl = useCallback((url: string | undefined): string | undefined => {
     if (!url || !url.startsWith('asset:')) return url
@@ -156,6 +158,7 @@ export function NoboardScreenRenderer({ elements, backgroundColor = '#FFFFFF', h
             onAction={handleAction}
             variables={variables}
             resolveAssetUrl={resolveAssetUrl}
+            flowTheme={flowTheme}
           />
         ))}
       </div>
@@ -171,9 +174,10 @@ interface RenderElementProps {
   onAction: (element: Element) => void
   variables: Record<string, any>
   resolveAssetUrl?: (url: string | undefined) => string | undefined
+  flowTheme?: FlowTheme
 }
 
-function RenderElement({ element, hiddenElements = new Set(), toggledIds, groupSelections, onAction, variables, resolveAssetUrl }: RenderElementProps) {
+function RenderElement({ element, hiddenElements = new Set(), toggledIds, groupSelections, onAction, variables, resolveAssetUrl, flowTheme }: RenderElementProps) {
   // Variable-based conditional visibility
   if (element.conditions?.show_if) {
     if (!evaluateCondition(element.conditions.show_if, variables)) {
@@ -181,7 +185,10 @@ function RenderElement({ element, hiddenElements = new Set(), toggledIds, groupS
     }
   }
 
-  const style = convertStyleToCSS(element.style || {} as ElementStyle, element.position)
+  const resolvedElementStyle = flowTheme
+    ? resolveThemeTokens(element.style || {}, flowTheme) as ElementStyle
+    : (element.style || {} as ElementStyle)
+  const style = convertStyleToCSS(resolvedElementStyle, element.position)
 
   // Check if this element is toggled (selected)
   const isToggled = toggledIds.has(element.id)
@@ -225,7 +232,7 @@ function RenderElement({ element, hiddenElements = new Set(), toggledIds, groupS
     actionProps.style = { cursor: 'pointer' }
   }
 
-  const childProps = { hiddenElements, toggledIds, groupSelections, onAction, variables, resolveAssetUrl }
+  const childProps = { hiddenElements, toggledIds, groupSelections, onAction, variables, resolveAssetUrl, flowTheme }
 
   switch (element.type) {
     case 'vstack':

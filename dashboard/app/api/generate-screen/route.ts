@@ -211,6 +211,15 @@ If the user asks about features NOT supported by the visual builder or SDK — s
 
 Adjust the wording naturally based on what the user asked, but always: (1) explain it's not in the visual builder, (2) mention custom screens as the solution, (3) include the docs link.
 
+VARIABLE RULES:
+- SETTING variables: Use set_variable actions. ALWAYS mention the variable names in your "message" text so the developer knows what to reference. Example: "I've added a selection that saves the choice as \`selectedPlan\`."
+- DISPLAYING variables: When the user asks to show/display/use a variable on screen, you MUST create text elements with {variable_name} in the "text" prop using curly braces. The {variable_name} template syntax is the ONLY way to display variable values. Plain text like "user_name" without curly braces will NOT resolve to the variable's value.
+- Example — adding variable displays via edit patch:
+  { "type": "edit", "message": "Added variable displays", "changes": [
+    { "id": "parent_id", "insertChild": { "id": "var_1", "type": "text", "props": { "text": "Name: {user_name}" }, "style": { "fontSize": 16, "color": "#FFF" } }, "position": "after:subtitle_id" },
+    { "id": "parent_id", "insertChild": { "id": "var_2", "type": "text", "props": { "text": "Goal: {goal}" }, "style": { "fontSize": 16, "color": "#FFF" } }, "position": "after:var_1" }
+  ]}
+- If asked to display 5 variables, there MUST be 5 corresponding text elements (or combined text) with {var} syntax in the returned JSON. NEVER skip the actual element creation.
 RULES: Start with {, end with }. All IDs unique.`
 
 
@@ -256,8 +265,8 @@ CURRENT SCREEN ELEMENTS:
 {CURRENT_ELEMENTS}`
 
 
-// Max conversation history messages to include (saves tokens on long chats)
-const MAX_HISTORY_MESSAGES = 6
+// Max recent messages that include full element JSON (older messages keep text only)
+const RECENT_WITH_ELEMENTS = 4
 
 export async function POST(request: NextRequest) {
   try {
@@ -322,7 +331,7 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey })
     const model = 'claude-sonnet-4-5-20250929'
 
-    const { prompt, images, referenceImage, currentElements, assets, allScreens, variables, conversationHistory } = body
+    const { prompt, images, referenceImage, currentElements, assets, allScreens, variables, conversationHistory, flowTheme } = body
 
     if (!prompt && (!images || images.length === 0)) {
       return NextResponse.json({ error: 'Please provide a prompt or images' }, { status: 400 })
@@ -361,10 +370,30 @@ export async function POST(request: NextRequest) {
     // Append available variables
     if (variables && variables.length > 0) {
       const varList = variables.map((v: any) => {
+        const typeInfo = v.varType && v.varType !== 'any' ? ` [${v.varType}]` : ''
         const valuesInfo = v.values && v.values.length > 0 ? ` (${v.values.join(', ')})` : ''
-        return `- {${v.name}}${valuesInfo}`
+        return `- {${v.name}}${typeInfo}${valuesInfo}`
       }).join('\n')
-      dynamicContext += `\n\nVARIABLES:\n${varList}\nUse in text: "Hello, {user_name}!"`
+      dynamicContext += `\n\nAVAILABLE VARIABLES:\n${varList}\nTo display a variable, create a text element: { "type": "text", "props": { "text": "{variable_name}" } }. You MUST use curly braces.`
+    }
+
+    // Append flow theme context
+    if (flowTheme) {
+      const themeColors = Object.entries(flowTheme.colors || {}).map(([k, v]) => `- ${k}: ${v}`).join('\n')
+      dynamicContext += `\n\nFLOW THEME:\nThe user has defined a design theme for this flow. Use these colors and styles BY DEFAULT, but if the user explicitly asks you to ignore the theme, use different colors, or override any theme setting, follow their instructions instead. The user's request always takes priority over the theme.\n\nColors:\n${themeColors}\n`
+      if (flowTheme.typography) {
+        dynamicContext += `\nTypography:\n- Heading: ${flowTheme.typography.heading.fontSize}px, weight ${flowTheme.typography.heading.fontWeight}\n- Body: ${flowTheme.typography.body.fontSize}px, weight ${flowTheme.typography.body.fontWeight}`
+        if (flowTheme.typography.fontFamily) {
+          dynamicContext += `\n- Font family: ${flowTheme.typography.fontFamily}`
+        }
+      }
+      if (flowTheme.button) {
+        dynamicContext += `\n\nButton defaults:\n- Background: ${flowTheme.button.backgroundColor}\n- Text: ${flowTheme.button.textColor}\n- Border radius: ${flowTheme.button.borderRadius}px\n- Min height: ${flowTheme.button.minHeight}px`
+      }
+      if (flowTheme.input) {
+        dynamicContext += `\n\nInput defaults:\n- Border: ${flowTheme.input.borderColor}\n- Border radius: ${flowTheme.input.borderRadius}px\n- Background: ${flowTheme.input.backgroundColor}`
+      }
+      dynamicContext += `\n\nYou may use theme token strings as style values (e.g., "theme.colors.primary" instead of "${flowTheme.colors.primary}"). The SDK will resolve them at runtime. Use tokens for primary actions, backgrounds, text colors, etc. Hardcode colors when the user requests specific colors or asks to ignore the theme.`
     }
 
     // Build system messages with prompt caching
@@ -384,16 +413,22 @@ export async function POST(request: NextRequest) {
       },
     ]
 
-    // Build messages array with TRIMMED conversation history
+    // Build messages array with full conversation history
+    // Recent messages include element JSON for context; older messages are text-only
     const messages: any[] = []
 
     if (conversationHistory && conversationHistory.length > 0) {
-      // Only keep the last N messages to save tokens
-      const trimmed = conversationHistory.slice(-MAX_HISTORY_MESSAGES)
-      for (const msg of trimmed) {
+      for (let i = 0; i < conversationHistory.length; i++) {
+        const msg = conversationHistory[i]
+        const isRecent = i >= conversationHistory.length - RECENT_WITH_ELEMENTS
+        let content = msg.content
+        // Append elements JSON for recent assistant messages so AI knows what it generated
+        if (isRecent && msg.elements && msg.role === 'assistant') {
+          content += `\n\n[Generated elements: ${JSON.stringify(msg.elements)}]`
+        }
         messages.push({
           role: msg.role as 'user' | 'assistant',
-          content: msg.content,
+          content,
         })
       }
     }

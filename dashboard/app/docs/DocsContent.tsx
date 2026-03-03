@@ -19,6 +19,7 @@ type Section =
   | 'lottie-video'
   | 'revenuecat'
   | 'ab-testing'
+  | 'setup-current'
   | 'sdk-reference'
 
 interface NavGroup {
@@ -33,6 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'quick-start', label: 'Quick Start' },
       { id: 'ai-setup', label: 'AI Setup' },
       { id: 'ai-builder', label: 'AI Builder' },
+      { id: 'setup-current', label: 'Setup Current Onboarding' },
     ],
   },
   {
@@ -152,11 +154,13 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens, isAut
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [copied, setCopied] = useState(false)
+  const [copiedReadme, setCopiedReadme] = useState(false)
+  const [copiedSetup, setCopiedSetup] = useState(false)
 
   // Handle URL query parameter for direct navigation
   useEffect(() => {
     const section = searchParams.get('section')
-    if (section && ['quick-start', 'ai-setup', 'ai-builder', 'installation', 'custom-screens', 'variables', 'lottie-video', 'revenuecat', 'ab-testing', 'sdk-reference'].includes(section)) {
+    if (section && ['quick-start', 'ai-setup', 'ai-builder', 'setup-current', 'installation', 'custom-screens', 'variables', 'lottie-video', 'revenuecat', 'ab-testing', 'sdk-reference'].includes(section)) {
       setActiveSection(section as Section)
     }
   }, [searchParams])
@@ -193,10 +197,24 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens, isAut
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const copyReadme = () => {
+    const readme = buildOnboardingReadme()
+    navigator.clipboard.writeText(readme)
+    setCopiedReadme(true)
+    setTimeout(() => setCopiedReadme(false), 2000)
+  }
+
+  const copySetup = () => {
+    const prompt = buildSetupPrompt()
+    navigator.clipboard.writeText(prompt)
+    setCopiedSetup(true)
+    setTimeout(() => setCopiedSetup(false), 2000)
+  }
+
   const renderSection = () => {
     switch (activeSection) {
       case 'quick-start': return <QuickStartSection onNavigate={setActiveSection} />
-      case 'ai-setup': return <AISetupSection onCopy={copyPrompt} copied={copied} />
+      case 'ai-setup': return <AISetupSection onCopy={copyPrompt} copied={copied} onCopyReadme={copyReadme} copiedReadme={copiedReadme} />
       case 'ai-builder': return <AIBuilderSection />
       case 'installation': return <InstallationSection testApiKey={testApiKey} productionApiKey={productionApiKey} isAuthenticated={isAuthenticated} />
       case 'custom-screens': return <CustomScreensSection />
@@ -204,6 +222,7 @@ export function DocsContent({ testApiKey, productionApiKey, customScreens, isAut
       case 'lottie-video': return <LottieVideoSection />
       case 'revenuecat': return <RevenueCatSection />
       case 'ab-testing': return <ABTestingSection />
+      case 'setup-current': return <SetupCurrentSection onCopy={copySetup} copied={copiedSetup} />
       case 'sdk-reference': return <SDKReferenceSection />
     }
   }
@@ -404,8 +423,8 @@ export default function App() {
         testKey="[YOUR_NB_TEST_KEY]"
         productionKey="[YOUR_NB_LIVE_KEY]"
         onComplete={(userData) => {
-          // userData contains all collected data from the flow
-          // userData._variables has all variable values
+          // userData contains all collected data — variables, custom screen data, everything flat
+          // e.g. { goal: 'fitness', userName: 'Sarah', premium: true, ... }
           console.log('Onboarding complete:', userData);
           setShowOnboarding(false);
         }}
@@ -577,18 +596,577 @@ These events are tracked automatically by the SDK — no code needed:
 
 ---
 
+## Step 6: Using Onboarding Data in My App
+
+When onboarding completes, the \`onComplete\` callback receives a \`userData\` object containing everything collected during the flow. Here's how to use it:
+
+### What's inside \`userData\`?
+
+\`\`\`tsx
+onComplete={(userData) => {
+  // Everything is flat — AI variables, custom screen data, initialVariables, all merged
+  // e.g. { goal: 'fitness', experience: 'beginner', selectedPlan: 'pro', premium: true, userName: 'Sarah' }
+  console.log(userData);
+}}
+\`\`\`
+
+All data is flat in one object — no nesting. Variables from AI screens (\`set_variable\` actions), data from custom screens (\`onDataUpdate()\`), and \`initialVariables\` are all merged together at the top level.
+
+During the flow, custom screens can also read everything via the \`data\` prop (\`data.goal\`, \`data.selectedPlan\`, etc.).
+
+### Saving to a database (recommended: save as JSON)
+
+Save the entire \`userData\` object as a single JSON column. This way, whenever you add new variables in the Noboarding dashboard, they're automatically saved — no code changes needed.
+
+\`\`\`tsx
+// Supabase example — save once, never update this code again
+onComplete={async (userData) => {
+  await supabase.from('users').update({
+    onboarding_data: userData,
+  }).eq('id', currentUserId);
+
+  // Also save locally for quick access
+  await AsyncStorage.setItem('onboarding_data', JSON.stringify(userData));
+
+  setShowOnboarding(false);
+}}
+\`\`\`
+
+\`\`\`tsx
+// Generic REST API example
+onComplete={async (userData) => {
+  await fetch('https://your-api.com/user/onboarding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ onboarding_data: userData }),
+  });
+
+  await AsyncStorage.setItem('onboarding_data', JSON.stringify(userData));
+  setShowOnboarding(false);
+}}
+\`\`\`
+
+**Why JSON?** The whole point of Noboarding is that you can change your onboarding flow without updating app code. If you save individual fields, you'd have to update your \`onComplete\` code and add a new database column every time you add a variable in the dashboard. With JSON, new variables are saved automatically.
+
+### Using onboarding data throughout your app
+
+Read the JSON once at app startup (or from AsyncStorage), then access any field directly:
+
+\`\`\`tsx
+// Read from AsyncStorage (fastest, works offline)
+const raw = await AsyncStorage.getItem('onboarding_data');
+const onboarding = raw ? JSON.parse(raw) : {};
+
+// Access any variable directly
+const goal = onboarding.goal;               // "fitness"
+const experience = onboarding.experience;   // "beginner"
+const premium = onboarding.premium;         // true
+
+// Personalize the app experience
+if (onboarding.goal === 'fitness') {
+  // Show fitness-related content
+} else if (onboarding.goal === 'nutrition') {
+  // Show nutrition content
+}
+\`\`\`
+
+\`\`\`tsx
+// Or read from your database
+const { data } = await supabase.from('users').select('onboarding_data').eq('id', userId).single();
+const onboarding = data.onboarding_data;
+const goal = onboarding.goal;  // "fitness"
+\`\`\`
+
+**Tip:** Create a simple helper or hook so you don't repeat the JSON parsing everywhere:
+
+\`\`\`tsx
+// hooks/useOnboardingData.ts
+export function useOnboardingData() {
+  const [data, setData] = useState<Record<string, any>>({});
+  useEffect(() => {
+    AsyncStorage.getItem('onboarding_data').then(raw => {
+      if (raw) setData(JSON.parse(raw));
+    });
+  }, []);
+  return data;
+}
+
+// Usage in any screen:
+const onboarding = useOnboardingData();
+const goal = onboarding.goal;
+\`\`\`
+
+### Data flow summary
+
+\`\`\`
+AI Screen (set_variable: goal = "fitness")
+    ↓
+Custom Screen (reads data.goal → "fitness", sets onDataUpdate({ premium: true }))
+    ↓
+AI Screen (reads {goal} in text → "fitness")
+    ↓
+onComplete → userData = { goal: "fitness", premium: true, userName: "Sarah", ... }
+    ↓
+Save as JSON → database (onboarding_data column) + AsyncStorage
+    ↓
+Your App → const onboarding = useOnboardingData(); onboarding.goal → "fitness"
+\`\`\`
+
+---
+
+## Step 7: Create an onboardingreadme.md Reference File
+
+**IMPORTANT:** After completing the integration, create a file called \`onboardingreadme.md\` in the root of the project. This file serves as a reference for any AI coding assistant working on this project in the future, so it always knows how the Noboarding SDK is set up and how to use the onboarding data.
+
+The file should contain:
+1. How the Noboarding SDK is integrated (which file, which keys)
+2. A list of all custom screen components and what they do
+3. The variable names used in the onboarding flow and what each one stores
+4. How onboarding data is saved/used after completion (which database, AsyncStorage keys, API endpoints, etc.)
+5. Any RevenueCat or webhook configuration details
+6. Instructions on how to modify the onboarding flow (dashboard URL, publish steps)
+
+Here's a template:
+
+\`\`\`markdown
+# Onboarding Integration (Noboarding SDK)
+
+## SDK Setup
+- Entry point: \`App.tsx\` (or wherever OnboardingFlow is rendered)
+- Test Key: nb_test_... (from Noboarding dashboard → Settings)
+- Production Key: nb_live_... (from Noboarding dashboard → Settings)
+- Dashboard: https://noboarding.com
+
+## Custom Screens
+| Component Name | File | Purpose |
+|----------------|------|---------|
+| PaywallScreen | src/screens/PaywallScreen.tsx | Shows RevenueCat paywall |
+| NotificationScreen | src/screens/NotificationScreen.tsx | Requests push notification permission |
+(Add your custom screens here)
+
+## Onboarding Variables
+These variables are set during onboarding and available directly on \`userData\` (flat, no nesting):
+| Variable | Set By | Example Value | Used For |
+|----------|--------|---------------|----------|
+| goal | AI screen (set_variable) | "fitness" | Personalizing home screen content |
+| experience | AI screen (set_variable) | "beginner" | Adjusting difficulty level |
+| selectedPlan | AI screen (set_variable) | "pro" | Determining which features to unlock |
+| premium | Custom screen (PaywallScreen) | true | Gating premium content |
+(Add your variables here)
+
+## Data Storage After Onboarding
+- User preferences are saved to: [your database / AsyncStorage / state management]
+- API endpoint: [your endpoint if applicable]
+- AsyncStorage keys: [list keys if applicable]
+
+## Modifying the Onboarding Flow
+1. Log in to https://noboarding.com
+2. Open the flow in the editor
+3. Use the AI Builder or Layout tab to make changes
+4. Click Publish → Publish for Testing (dev) or Publish to Production (live)
+5. No app update needed — changes are picked up automatically
+\`\`\`
+
+Customize this template based on the actual integration you just completed. Update it whenever the onboarding flow changes.
+
+---
+
 ## Important Notes
 - Use TypeScript for all files
 - The SDK only works with React Native / Expo apps
 - Follow React Native best practices with proper error handling and loading states
 - Add comments explaining the onUserIdGenerated callback (it's critical for analytics)
 - The SDK ships with expo-av and lottie-react-native for rendering video and Lottie animation elements designed in the AI Builder. These are included as dependencies and require no extra setup in Expo projects.
+- Always keep the \`onboardingreadme.md\` file up to date when making changes to the onboarding flow or custom screens
 - Ask me questions if anything about my app setup is unclear — don't make assumptions`
+}
+
+function buildOnboardingReadme(): string {
+  return `# Onboarding Integration (Noboarding SDK)
+
+This file is a reference for AI coding assistants and developers working on this project.
+It describes how the Noboarding onboarding SDK is integrated and how to use the data it collects.
+
+## What is Noboarding?
+
+Noboarding is a server-driven onboarding SDK for React Native / Expo. Onboarding screens are designed
+in a web dashboard (https://noboarding.com) and rendered natively by the SDK — no app update needed
+to change screens, copy, images, or flow order.
+
+## SDK Setup
+
+- **Package:** \`noboarding\` (+ peer dep \`@react-native-async-storage/async-storage\`)
+- **Entry point:** \`App.tsx\` (or wherever \`<OnboardingFlow />\` is rendered)
+- **Test Key:** \`nb_test_...\` (used automatically when \`__DEV__ === true\`)
+- **Production Key:** \`nb_live_...\` (used automatically in production builds)
+- **Dashboard:** https://noboarding.com → Settings for API keys
+
+\`\`\`tsx
+import { OnboardingFlow } from 'noboarding';
+
+<OnboardingFlow
+  testKey="nb_test_..."
+  productionKey="nb_live_..."
+  initialVariables={{
+    // Pass any data you already know about the user
+    userName: user.name,
+    platform: Platform.OS,
+  }}
+  customComponents={{
+    // Register custom screen components (keys must match dashboard names exactly)
+    PaywallScreen: PaywallScreen,
+    NotificationScreen: NotificationScreen,
+  }}
+  onUserIdGenerated={(userId) => {
+    // Sync with RevenueCat or your analytics (if applicable)
+    Purchases.logIn(userId);
+  }}
+  onComplete={(userData) => {
+    // Called when user finishes onboarding — see "Using Onboarding Data" below
+    handleOnboardingComplete(userData);
+  }}
+  onSkip={() => {
+    // Called when user skips/dismisses the onboarding
+  }}
+/>
+\`\`\`
+
+## Screen Types
+
+There are two types of screens in a Noboarding flow:
+
+1. **AI Screens (noboard_screen)** — Designed in the dashboard using the AI Builder or Layout tab.
+   These screens can set variables via \`set_variable\` actions (e.g., button taps that save user choices).
+
+2. **Custom Screens (custom_screen)** — React Native components you build and register with the SDK.
+   Used for native features the dashboard can't handle (paywalls, permissions, sign-in, etc.).
+
+## Custom Screen Props
+
+Every custom screen component receives these props:
+
+\`\`\`tsx
+interface CustomScreenProps {
+  analytics: { track: (event: string, properties?: Record<string, any>) => void };
+  onNext: () => void;                                    // Navigate to next screen
+  onBack?: () => void;                                   // Navigate to previous screen
+  onSkip?: () => void;                                   // Skip entire onboarding
+  preview?: boolean;                                     // true in dashboard preview mode
+  data?: Record<string, any>;                            // All data from previous screens
+  onDataUpdate?: (data: Record<string, any>) => void;    // Pass data to next screens
+}
+\`\`\`
+
+**The \`data\` prop contains everything collected so far** — both variables from AI screens (\`set_variable\`)
+and data from other custom screens (\`onDataUpdate\`). You can read any variable by name:
+
+\`\`\`tsx
+function MyScreen({ data, onDataUpdate, onNext }: CustomScreenProps) {
+  // Read a variable set by an AI screen
+  const userGoal = data?.goal;          // e.g. "fitness"
+  const userName = data?.userName;      // e.g. "Sarah" (from initialVariables)
+
+  const handleSubmit = () => {
+    // Set new data for subsequent screens
+    onDataUpdate?.({ selectedPlan: 'pro', completedSurvey: true });
+    onNext();
+  };
+}
+\`\`\`
+
+## Custom Screens in This Project
+
+| Component Name | File | Purpose |
+|----------------|------|---------|
+| (fill in your custom screen name) | (file path) | (what it does) |
+
+## Onboarding Variables
+
+These variables are set during the onboarding flow and available directly on \`userData\` (flat, no nesting):
+
+| Variable Name | Set By | Example Value | Used For |
+|---------------|--------|---------------|----------|
+| (fill in) | AI screen / Custom screen | (example) | (how your app uses it) |
+
+## Using Onboarding Data in Your App
+
+When onboarding completes, the \`onComplete\` callback receives a flat \`userData\` object with everything merged.
+
+**Recommended: Save the entire object as JSON.** This way, new variables added in the Noboarding dashboard
+are saved automatically — no code changes needed.
+
+\`\`\`tsx
+onComplete={async (userData) => {
+  // userData = { goal: 'fitness', experience: 'beginner', premium: true, userName: 'Sarah', ... }
+
+  // Save to database as a JSON column
+  await supabase.from('users').update({
+    onboarding_data: userData,
+  }).eq('id', currentUserId);
+
+  // Also save locally for quick offline access
+  await AsyncStorage.setItem('onboarding_data', JSON.stringify(userData));
+}}
+\`\`\`
+
+### Data Flow Diagram
+
+\`\`\`
+initialVariables (from your app)
+    ↓
+AI Screen 1 → set_variable: goal = "fitness"
+    ↓
+Custom Screen → reads data.goal ("fitness"), sets onDataUpdate({ premium: true })
+    ↓
+AI Screen 2 → reads {goal} in text templates
+    ↓
+onComplete → userData = { goal: "fitness", premium: true, userName: "Sarah", ... }
+    ↓
+Save as JSON → database (onboarding_data column) + AsyncStorage
+    ↓
+Your App → const onboarding = useOnboardingData(); onboarding.goal → "fitness"
+\`\`\`
+
+### Accessing Data Anywhere in Your App
+
+Create a helper hook so any screen in your app can read onboarding data:
+
+\`\`\`tsx
+// hooks/useOnboardingData.ts
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export function useOnboardingData() {
+  const [data, setData] = useState<Record<string, any>>({});
+  useEffect(() => {
+    AsyncStorage.getItem('onboarding_data').then(raw => {
+      if (raw) setData(JSON.parse(raw));
+    });
+  }, []);
+  return data;
+}
+\`\`\`
+
+\`\`\`tsx
+// Usage in any screen:
+import { useOnboardingData } from './hooks/useOnboardingData';
+
+function HomeScreen() {
+  const onboarding = useOnboardingData();
+
+  if (onboarding.goal === 'fitness') {
+    // Show fitness content
+  }
+
+  return <Text>Welcome, {onboarding.userName}!</Text>;
+}
+\`\`\`
+
+\`\`\`tsx
+// Or read from your database:
+const { data } = await supabase.from('users').select('onboarding_data').eq('id', userId).single();
+const onboarding = data.onboarding_data;
+const goal = onboarding.goal; // "fitness"
+\`\`\`
+
+## Data Storage in This Project
+
+- **Database column:** \`onboarding_data\` (JSONB) on the users table — stores the full userData object
+- **AsyncStorage key:** \`onboarding_data\` — JSON string for quick local access
+- **Helper hook:** \`useOnboardingData()\` — reads from AsyncStorage, returns the parsed object
+
+## RevenueCat Integration (If Applicable)
+
+- RevenueCat SDK: \`react-native-purchases\`
+- iOS API Key: \`appl_...\`
+- Android API Key: \`goog_...\`
+- User ID sync: \`onUserIdGenerated\` callback passes Noboarding user ID to \`Purchases.logIn()\`
+- Webhook URL: configured in RevenueCat dashboard → Integrations → Webhooks
+
+## Modifying the Onboarding Flow
+
+1. Log in to https://noboarding.com
+2. Open your flow in the editor
+3. Use the AI Builder or Layout tab to make changes
+4. Click **Publish → Publish for Testing** (for dev builds)
+5. Click **Publish → Publish to Production** (for live builds)
+6. No app update needed — the SDK picks up changes automatically
+
+## Analytics Events (Automatic)
+
+The SDK tracks these events automatically:
+
+| Event | When |
+|-------|------|
+| onboarding_started | Flow loads and first screen appears |
+| screen_viewed | User navigates to a new screen |
+| screen_completed | User completes a screen |
+| onboarding_completed | User reaches the end of the flow |
+| onboarding_abandoned | User skips/dismisses the flow |
+
+## Updating This File
+
+Keep this file up to date whenever you:
+- Add or remove custom screen components
+- Change which variables are set in the dashboard
+- Change how onboarding data is saved or used in the app
+- Modify RevenueCat or webhook configuration
+`
+}
+
+// ── Setup Prompt Builder ─────────────────────────────────────────────────
+
+function buildSetupPrompt(): string {
+  return `I'm integrating Noboarding (a server-driven onboarding SDK for React Native) into my app. I already have onboarding screens built. I need you to analyze my onboarding code and output a structured setup prompt that I'll paste into the Noboarding dashboard.
+
+For EACH onboarding screen in my code, output this exact format:
+
+SCREEN: ComponentName
+DESCRIPTION: One sentence describing what this screen does
+VARIABLES:
+- variable_name: type
+
+Where "type" is one of: string, number, boolean, list, any
+
+Rules:
+- ComponentName must match the exact React component name (e.g., HeightInputScreen, GoalSelectionScreen)
+- Variables are the data this screen collects from the user (form inputs, selections, toggles, etc.)
+- Use "list" for arrays (multi-select, lists of items)
+- Use "boolean" for toggles, checkboxes, yes/no
+- Use "number" for numeric inputs (height, weight, age, etc.)
+- Use "string" for text inputs, single selections, etc.
+- Use "any" if the type is unclear
+- If a screen doesn't collect any data, write VARIABLES: none
+- Separate each screen with a blank line
+
+Example output:
+
+SCREEN: HeightInputScreen
+DESCRIPTION: User enters their height in cm or feet/inches
+VARIABLES:
+- height_cm: number
+- height_unit: string
+
+SCREEN: GoalSelectionScreen
+DESCRIPTION: User picks one or more fitness goals from a grid
+VARIABLES:
+- goals: list
+- primary_goal: string
+
+SCREEN: NotificationPermissionScreen
+DESCRIPTION: Asks user to enable push notifications
+VARIABLES: none
+
+Now analyze my onboarding code and output the setup prompt. Here is my code:
+`
 }
 
 // ════════════════════════════════════════════════════════════════════════
 //  SECTIONS
 // ════════════════════════════════════════════════════════════════════════
+
+// ── Setup Current Onboarding ────────────────────────────────────────────
+
+function SetupCurrentSection({ onCopy, copied }: { onCopy: () => void; copied: boolean }) {
+  return (
+    <div>
+      <Heading level={2} style={{ marginBottom: theme.spacing.md }}>Setup Current Onboarding</Heading>
+      <Text style={{ marginBottom: theme.spacing.lg, lineHeight: 1.6 }}>
+        If you already have onboarding screens in your app, you can quickly set them up in Noboarding.
+        Copy the prompt below, paste it into your AI (ChatGPT, Claude, etc.) along with your onboarding code,
+        and it will generate a setup prompt. Then paste that output into the Setup modal in your flow builder.
+      </Text>
+
+      {/* Step-by-step */}
+      <div style={{
+        display: 'flex',
+        gap: theme.spacing.md,
+        marginBottom: theme.spacing.xl,
+        flexWrap: 'wrap',
+      }}>
+        {[
+          { step: '1', title: 'Copy the prompt', desc: 'Click the button below to copy the analysis prompt' },
+          { step: '2', title: 'Paste into your AI', desc: 'Give it to ChatGPT/Claude along with your onboarding code' },
+          { step: '3', title: 'Paste the output', desc: 'Click "Setup" in the flow builder and paste the result' },
+        ].map(s => (
+          <div key={s.step} style={{
+            flex: '1 1 200px',
+            padding: theme.spacing.md,
+            backgroundColor: theme.colors.background,
+            borderRadius: theme.borderRadius.md,
+            border: `1px solid ${theme.colors.border}`,
+          }}>
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              backgroundColor: theme.colors.primary,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: '700',
+              marginBottom: theme.spacing.sm,
+            }}>{s.step}</div>
+            <Text style={{ fontWeight: '600', marginBottom: '4px' }}>{s.title}</Text>
+            <Text size="sm" variant="muted">{s.desc}</Text>
+          </div>
+        ))}
+      </div>
+
+      {/* Prompt block */}
+      <div style={{
+        backgroundColor: theme.colors.background,
+        borderRadius: theme.borderRadius.lg,
+        border: `1px solid ${theme.colors.border}`,
+        padding: theme.spacing.lg,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.md }}>
+          <Heading level={3}>Analysis Prompt</Heading>
+          <button
+            onClick={onCopy}
+            style={{
+              padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+              backgroundColor: copied ? '#22c55e' : theme.colors.primary,
+              color: '#fff',
+              border: 'none',
+              borderRadius: theme.borderRadius.sm,
+              fontSize: theme.fontSizes.sm,
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontFamily: theme.fonts.sans,
+              transition: 'background-color 0.15s ease',
+              minWidth: 120,
+            }}
+          >
+            {copied ? 'Copied!' : 'Copy Prompt'}
+          </button>
+        </div>
+
+        <Text size="sm" variant="muted" style={{ marginBottom: theme.spacing.md }}>
+          Copy this prompt and paste it into your AI assistant along with your onboarding screen code.
+          The AI will output a structured setup that you can paste into the flow builder.
+        </Text>
+
+        <pre style={{
+          backgroundColor: '#1e1e1e',
+          color: '#d4d4d4',
+          padding: theme.spacing.md,
+          borderRadius: theme.borderRadius.md,
+          fontSize: '12px',
+          lineHeight: 1.5,
+          overflowX: 'auto',
+          whiteSpace: 'pre-wrap',
+          maxHeight: '400px',
+          overflowY: 'auto',
+        }}>
+          {buildSetupPrompt()}
+        </pre>
+      </div>
+    </div>
+  )
+}
 
 // ── 1. Quick Start ─────────────────────────────────────────────────────
 
@@ -716,11 +1294,16 @@ function QuickStartSection({ onNavigate }: { onNavigate: (s: Section) => void })
 function AISetupSection({
   onCopy,
   copied,
+  onCopyReadme,
+  copiedReadme,
 }: {
   onCopy: () => void
   copied: boolean
+  onCopyReadme: () => void
+  copiedReadme: boolean
 }) {
   const prompt = buildAIPrompt()
+  const readme = buildOnboardingReadme()
 
   return (
     <div>
@@ -808,6 +1391,44 @@ function AISetupSection({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* onboardingreadme.md */}
+      <div style={sectionGap}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.md }}>
+          <Heading level={3} serif>
+            onboardingreadme.md
+          </Heading>
+          <button
+            onClick={onCopyReadme}
+            style={{
+              padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+              backgroundColor: copiedReadme ? '#22c55e' : theme.colors.primary,
+              color: '#fff',
+              border: 'none',
+              borderRadius: theme.borderRadius.sm,
+              fontSize: theme.fontSizes.sm,
+              fontWeight: '600',
+              cursor: 'pointer',
+              fontFamily: theme.fonts.sans,
+              transition: 'background-color 0.15s ease',
+              minWidth: 120,
+            }}
+          >
+            {copiedReadme ? 'Copied!' : 'Copy README'}
+          </button>
+        </div>
+        <Callout color="purple">
+          <Text variant="muted">
+            This is a reference file you can add to your project root. It helps any AI coding assistant (or developer) understand how the Noboarding SDK is set up, what variables your onboarding collects, and how to use that data throughout your app. The AI prompt above instructs your assistant to create this file automatically — but you can also copy it manually and fill in the details yourself.
+          </Text>
+        </Callout>
+        <Text variant="muted" size="sm" style={{ marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+          Copy this file and save it as <code style={inlineCodeStyle}>onboardingreadme.md</code> in your project root. Fill in the placeholder sections with your actual screens, variables, and data storage details.
+        </Text>
+        <Card padding="none">
+          <pre style={{ ...codeBlockStyle, maxHeight: 400, overflow: 'auto' }}>{readme}</pre>
+        </Card>
       </div>
     </div>
   )
@@ -1453,8 +2074,8 @@ function VariablesSection() {
     platform: Platform.OS,    // Show platform-specific instructions
   }}
   onComplete={(userData) => {
-    // All variables (initial + collected) are in userData._variables
-    console.log(userData._variables);
+    // All data is flat — initial variables + collected variables + custom screen data
+    console.log(userData);
     // { userName: 'Sarah', isPremium: false, platform: 'ios', goal: 'fitness', ... }
   }}
 />`}</pre>
@@ -1520,7 +2141,7 @@ function VariablesSection() {
                 ['Branch to different screens', 'Tell the AI: "If X equals Y, go to screen Z" — or manually add conditions to a navigate action'],
                 ['Pass data from my app', 'Use the initialVariables prop on OnboardingFlow'],
                 ['Pass data from a custom screen', 'Call onDataUpdate({ key: value }) in your component'],
-                ['Read all collected data', 'Use the onComplete callback — userData._variables has everything'],
+                ['Read all collected data', 'Use the onComplete callback — everything is flat on userData (e.g. userData.goal)'],
               ].map(([want, how], i) => (
                 <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : theme.colors.background }}>
                   <td style={{ ...tdStyle, fontWeight: '600' }}>{want}</td>
@@ -2089,16 +2710,17 @@ interface CustomScreenProps {
           Data Flow
         </Heading>
         <Text style={{ marginBottom: theme.spacing.sm }}>
-          When the flow completes, <code style={inlineCodeStyle}>onComplete</code> receives an object containing:
+          When the flow completes, <code style={inlineCodeStyle}>onComplete</code> receives a flat object with everything merged:
         </Text>
         <ul style={{ marginLeft: theme.spacing.lg }}>
-          <li style={listItemStyle}>All data from <code style={inlineCodeStyle}>onDataUpdate()</code> calls across custom screens (merged)</li>
-          <li style={listItemStyle}><code style={inlineCodeStyle}>_variables</code> — all variable values (from <code style={inlineCodeStyle}>initialVariables</code> + <code style={inlineCodeStyle}>set_variable</code> actions)</li>
+          <li style={listItemStyle}>All variables from AI screens (<code style={inlineCodeStyle}>set_variable</code> actions)</li>
+          <li style={listItemStyle}>All data from custom screens (<code style={inlineCodeStyle}>onDataUpdate()</code> calls)</li>
+          <li style={listItemStyle}>All <code style={inlineCodeStyle}>initialVariables</code> passed to the flow</li>
         </ul>
         <Card padding="sm">
           <pre style={codeBlockStyle}>{`onComplete={(userData) => {
-  // userData contains all collected data, e.g.:
-  // { premium: true, goal: 'fitness', _variables: { userName: 'John' } }
+  // Everything is flat — no nesting
+  // { goal: 'fitness', premium: true, userName: 'John', experience: 'beginner' }
   console.log(userData);
 }}`}</pre>
         </Card>

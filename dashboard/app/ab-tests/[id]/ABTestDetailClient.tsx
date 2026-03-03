@@ -134,11 +134,19 @@ export function ABTestDetailClient({
     const newConfig = flows.find(f => f.id === newConfigId)
     if (!newConfig) return
 
+    // Fetch the flow's screens to update the variant snapshot
+    const { data: configData } = await supabase
+      .from('onboarding_configs')
+      .select('config')
+      .eq('id', newConfigId)
+      .single()
+
     const updated = [...editVariants]
     updated[variantIndex] = {
       ...updated[variantIndex],
       config_id: newConfigId,
       name: newConfig.name,
+      screens: configData?.config?.screens || [],
     }
     setEditVariants(updated)
   }

@@ -1,4 +1,4 @@
-import { Screen, Asset } from '@/lib/types'
+import { Screen, Asset, FlowTheme } from '@/lib/types'
 import { RNPreview } from './RNPreview'
 import React, { useState, useCallback } from 'react'
 
@@ -6,9 +6,10 @@ interface ScreenPreviewProps {
   screen: Screen
   hiddenElements?: Set<string>
   assets?: Asset[]
+  flowTheme?: FlowTheme
 }
 
-export function ScreenPreview({ screen, hiddenElements = new Set(), assets = [] }: ScreenPreviewProps) {
+export function ScreenPreview({ screen, hiddenElements = new Set(), assets = [], flowTheme }: ScreenPreviewProps) {
   // Local variable state for previewing variable-driven behavior
   const [previewVariables, setPreviewVariables] = useState<Record<string, any>>({})
   const handleSetVariable = useCallback((name: string, value: any) => {
@@ -25,6 +26,7 @@ export function ScreenPreview({ screen, hiddenElements = new Set(), assets = [] 
         variables={previewVariables}
         onSetVariable={handleSetVariable}
         assets={assets}
+        flowTheme={flowTheme}
       />
     )
   }

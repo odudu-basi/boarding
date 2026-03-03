@@ -206,11 +206,48 @@ export interface ElementStyle {
   textDecorationLine?: 'none' | 'underline' | 'line-through';
 }
 
+// ─── Flow Theme Types ───
+
+export interface FlowTheme {
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    surface: string;
+    text: string;
+    textMuted: string;
+    accent: string;
+    success: string;
+    error: string;
+  };
+  typography: {
+    heading: { fontSize: number; fontWeight: string };
+    body: { fontSize: number; fontWeight: string };
+    fontFamily?: string;
+  };
+  button: {
+    backgroundColor: string;
+    textColor: string;
+    borderRadius: number;
+    minHeight: number;
+  };
+  input: {
+    borderColor: string;
+    borderRadius: number;
+    backgroundColor: string;
+  };
+  general: {
+    borderRadius: number;
+    spacing: number;
+  };
+}
+
 // Onboarding configuration from API
 export interface OnboardingConfig {
   version: string;
   screens: ScreenConfig[];
   assets?: Array<{ name: string; type: string; data: string }>;
+  theme?: FlowTheme;
 }
 
 // Experiment/A/B test variant

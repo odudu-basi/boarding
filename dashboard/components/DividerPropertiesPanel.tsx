@@ -1,13 +1,15 @@
-import { Element, ElementStyle } from '@/lib/types'
+import { Element, ElementStyle, FlowTheme } from '@/lib/types'
 import { theme } from '@/lib/theme'
 import { useState } from 'react'
+import { ThemeAwareColorInput } from './ThemeAwareColorInput'
 
 interface DividerPropertiesPanelProps {
   element: Element
   onUpdate: (updates: Partial<Element>) => void
+  flowTheme?: FlowTheme
 }
 
-export function DividerPropertiesPanel({ element, onUpdate }: DividerPropertiesPanelProps) {
+export function DividerPropertiesPanel({ element, onUpdate, flowTheme }: DividerPropertiesPanelProps) {
   const style = element.style || {}
   const props = element.props || {}
 
@@ -36,9 +38,10 @@ export function DividerPropertiesPanel({ element, onUpdate }: DividerPropertiesP
       {/* Layer Section */}
       <Section title="Layer" icon="◧">
         <Property label="Background">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.backgroundColor || '#FFFFFF'}
             onChange={(value) => updateStyle({ backgroundColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
         <Property label="Opacity">
@@ -127,9 +130,10 @@ export function DividerPropertiesPanel({ element, onUpdate }: DividerPropertiesP
           />
         </Property>
         <Property label="Color">
-          <ColorInput
+          <ThemeAwareColorInput
             value={style.borderColor || '#000000'}
             onChange={(value) => updateStyle({ borderColor: value })}
+            flowTheme={flowTheme}
           />
         </Property>
       </Section>

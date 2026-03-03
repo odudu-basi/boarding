@@ -62,6 +62,49 @@ export async function publishFlow(id: string, environment: 'test' | 'production'
     .eq('id', id)
 
   if (error) return { error: error.message }
+
+  // Sync A/B test variants — update any active experiment that references this flow
+  try {
+    const { data: publishedFlow } = await supabase
+      .from('onboarding_configs')
+      .select('config')
+      .eq('id', id)
+      .single()
+
+    if (publishedFlow?.config?.screens) {
+      const { data: experiments } = await supabase
+        .from('experiments')
+        .select('id, variants')
+        .eq('organization_id', flow.organization_id)
+        .eq('status', 'active')
+
+      if (experiments && experiments.length > 0) {
+        for (const exp of experiments) {
+          const variants = exp.variants as any[]
+          let changed = false
+
+          const updatedVariants = variants.map((v: any) => {
+            if (v.config_id === id) {
+              changed = true
+              return { ...v, screens: publishedFlow.config.screens }
+            }
+            return v
+          })
+
+          if (changed) {
+            await supabase
+              .from('experiments')
+              .update({ variants: updatedVariants, updated_at: new Date().toISOString() })
+              .eq('id', exp.id)
+          }
+        }
+      }
+    }
+  } catch (syncError) {
+    console.error('Failed to sync A/B test variants:', syncError)
+    // Don't block publish if sync fails
+  }
+
   revalidatePath('/')
   return { error: null }
 }

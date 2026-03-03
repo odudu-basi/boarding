@@ -4,7 +4,7 @@ import React from 'react'
 import { View } from 'react-native'
 // Import the actual ElementRenderer from local SDK copy
 import { ElementRenderer } from '@/lib/sdk/ElementRenderer'
-import type { ElementNode } from '@/lib/sdk/types'
+import type { ElementNode, FlowTheme } from '@/lib/sdk/types'
 import type { Asset } from '@/lib/types'
 
 interface RNPreviewProps {
@@ -14,6 +14,7 @@ interface RNPreviewProps {
   variables?: Record<string, any>
   onSetVariable?: (name: string, value: any) => void
   assets?: Asset[]
+  flowTheme?: FlowTheme
 }
 
 export function RNPreview({
@@ -23,6 +24,7 @@ export function RNPreview({
   variables = {},
   onSetVariable = () => {},
   assets = [],
+  flowTheme,
 }: RNPreviewProps) {
   // Mock analytics for preview mode
   const mockAnalytics = {
@@ -49,6 +51,7 @@ export function RNPreview({
   return (
     <View
       style={{
+        flex: 1,
         width: '100%',
         height: '100%',
         backgroundColor,
@@ -63,6 +66,7 @@ export function RNPreview({
         variables={variables}
         onSetVariable={onSetVariable}
         assets={assets}
+        theme={flowTheme}
       />
     </View>
   )
