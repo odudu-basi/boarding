@@ -1021,7 +1021,7 @@ export default function FlowBuilderPage() {
                                 {/* Variable chips */}
                                 {currentVars.length > 0 && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {currentVars.map((v) => {
+                                    {currentVars.map((v, vi) => {
                                       const typeColors: Record<string, { bg: string; color: string }> = {
                                         string: { bg: '#F1F5F9', color: '#475569' },
                                         number: { bg: '#DBEAFE', color: '#1D4ED8' },
@@ -1033,7 +1033,7 @@ export default function FlowBuilderPage() {
 
                                       return (
                                         <div
-                                          key={v.name}
+                                          key={`${v.name}-${vi}`}
                                           style={{
                                             display: 'flex',
                                             alignItems: 'center',
@@ -3727,6 +3727,7 @@ function collectFlowVariables(screens: Screen[]): VariableInfo[] {
   const varMap: Record<string, VariableInfo> = {}
 
   const ensureVar = (name: string) => {
+    if (!name) return { name: '', values: [], setByScreens: [], readByScreens: [], source: 'ai' as const }
     if (!varMap[name]) {
       varMap[name] = { name, values: [], setByScreens: [], readByScreens: [], source: 'ai' }
     }
@@ -3903,12 +3904,12 @@ function VariablesPanel({ screens, selectedScreen }: { screens: Screen[]; select
         ))}
       </div>
 
-      {variables.map((v) => {
+      {variables.map((v, vi) => {
         const color = getVarColor(v)
 
         return (
           <div
-            key={v.name}
+            key={`${v.name}-${vi}`}
             style={{
               border: `1px solid ${color.border}40`,
               borderLeft: `3px solid ${color.dot}`,
